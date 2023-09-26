@@ -8,7 +8,6 @@ continue
 '''
 
 env = {"LD_PRELOAD": "/home/siela1915/BA_Project/libscudo.so"}
-
 if args.NOSCUDO:
     env = {}
 elif args.QUARANTINE:
@@ -19,7 +18,6 @@ elif args.QUARANTINE:
         "release_to_os_interval_ms=-1"
     ])
 
-    
 def start():
     if args.GDB:
         return gdb.debug(elf.path, gdbscript=gs, env=env)
@@ -54,10 +52,6 @@ def write(address, data):
     io.sendafter(b"write: ", f"{len(data)}\n".encode())
     io.sendafter(b"write: ", data)
     io.send(b"\n")
-
-def populate_quarantine():
-    for i in range(0x1000):
-        free(malloc(0x20+i)[1])
     
 io = start()
 
@@ -68,16 +62,10 @@ io = start()
 
 # The malloc() function chooses option 1 and then 3 from the menu.
 # Its arguments are "size" and "data".
-ind1, add1 = malloc(24, b"Y"*24)
-ind2, add2 = malloc(24, b"X"*24)
-
-write(add1, b"X"*12)
-write(add2, b"Y"*12)
+ind1, add1 = malloc(24, b"Z"*24)
 
 free(add1)
-free(add2)
-
-populate_quarantine()
+free(add1)
 
 # =============================================================================
 
