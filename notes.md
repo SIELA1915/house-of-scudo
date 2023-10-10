@@ -31,4 +31,29 @@ If we have one allocation, we know the size, we might know the origin depending 
 
 for compareAndExchangeHeader checksum is not 0 in the header!
 
-# 
+# Deallocate
+
+Checks:
+ - Alignment
+ - Header Checksum
+ - Allocation State
+ - (if enabled) Allocation Type
+   - If Memalign origin in header or deallocate called from malloc (free) passes anyway
+ - (if enabled) Delete size
+ - Header race during state change (uninteresting)
+ - (Primary) ClassId less than NumClasses (uint64 comparison)
+
+Notes:
+ - Checksum is recalculated when state changes
+
+# Allocate
+
+Checks:
+ - Alignment
+ - Allocation Size not too big
+ - header not checked before retrieving from cache
+
+Notes:
+ - Checksum is computed based on previous checksum
+ - Is offset reset?
+ 

