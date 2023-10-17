@@ -29,8 +29,6 @@ Checksum:          16 bits
 Offset is generally 0, checksum is set to 0 for calculation of the checksum.
 If we have one allocation, we know the size, we might know the origin depending on context, state has to be allocated, and ClassId can be calculated from the size based on the configuration. So the only things we don't know are the chunk ptr and cookie, but there is a good chance we know the ptr address too. Therefore if we have one checksum leak, we can bruteforce the cookie since it's only 32 bits, and crc32 is pretty fast. (At least in C, need to find a way to do it in Python still)
 
-for compareAndExchangeHeader checksum is not 0 in the header!
-
 # Deallocate
 
 Checks:
@@ -45,15 +43,33 @@ Checks:
 
 Notes:
  - Checksum is recalculated when state changes
+ - Size check local cache?
+ - ClassId 0
 
 # Allocate
 
 Checks:
  - Alignment
  - Allocation Size not too big
+ - Rss Limit
+
  - header not checked before retrieving from cache
 
 Notes:
- - Checksum is computed based on previous checksum
  - Is offset reset?
  
+# Refill local cache
+
+Popped TransferBatch count > 0
+Chunks array of TransferBatch copied to PerClass
+Count of popped TransferBatch set to 0
+TransferBatch deallocated
+
+# Drain local cache
+
+Pushes first half of cache to TransferBatches
+Copies second half of cache to first half -> if corrupt localcache count twice same chunk
+
+
+Secondary
+Free List
