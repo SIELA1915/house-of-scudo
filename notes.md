@@ -43,8 +43,8 @@ Checks:
 
 Notes:
  - Checksum is recalculated when state changes
- - Size check local cache?
- - ClassId 0
+ - Size check local cache? -> None!!!
+ - ClassId 0 -> treated like secondary
 
 # Allocate
 
@@ -52,7 +52,7 @@ Checks:
  - Alignment
  - Allocation Size not too big
  - Rss Limit
-
+ 
  - header not checked before retrieving from cache
 
 Notes:
@@ -73,3 +73,113 @@ Copies second half of cache to first half -> if corrupt localcache count twice s
 
 Secondary
 Free List
+
+
+# Secondary Blocks
+
+## Allocate
+
+- Alignment
+- Max Size
+
+### Found in cache
+
+- Fill content if asked
+- Add to in use blocks
+
+-> continue with normal header allocation
+
+### Not found in cache
+
+MapSize = size + 2 guard pages
+map MapSize with `MAP_NOACCESS | MAP_ALLOWNOMEM`
+Set CommitBase to MapBase + 1 page
+
+If Alignment >= PageSize and 32 bit:
+- Trim map begin and end
+
+CommitSize = MapEnd - PageSize - CommitBase
+AllocPos = CommitBase + CommitSize - Size, rounded down to Alignmentt
+
+map secondary at CommitBase for CommitSize with `MAP_RESIZABLE`
+
+HeaderPos = AllocPos - normal header size - largeblock header size
+
+Add tag to header if memory tagging enabled
+
+Fill large block header with values
+
+add to InUseBlocks (sets prev and next pointers)
+
+
+## Deallocate
+
+Remove from InUseBlocks (sets prev->next to next and next->prev to prev and first/last if needed)
+ - Checks if prev->next was cur and next->prev was cur
+
+Store in cache
+
+## Cache
+
+### Retrieve
+
+Iterate over all entries:
+
+- AllocPos = CommitBase + CommitSize - Size, round down to alignment
+- HeaderPos = AllocPos - normal chunk header size - large block header size
+- Check HeaderPos no overflow (> CommitBase + CommitSize)
+- HeaderPos insite Committed size, doesn't leave more than MaxUnusedCachePages unused in committed space
+
+If found:
+
+- If memory tagging:
+  - Add tag to pointer
+  - Add stuff for zeroing
+- Add to InUseBlocks (sets next and prev pointers)
+
+
+### Store
+
+if size too big -> unmap
+else:
+
+- Fill cached block entry with header values,
+- If ReleaseToOSIntervalMs is 0, release pages and set Time to 0
+  - else set time
+- If 4 full events -> empty cache
+- Move first cache entry to first unused entry
+- Put current block into first spot in list
+- Release old entries
+- If no spot in cache found for current block, unmap it
+
+
+
+
+# Freelist
+
+## BatchGroup
+
+Pointer to next BatchGroup
+Group Id
+Max Cached per Transfer Batch
+Num Pushed Blocks
+Pushed Blocks at Last Checkpoint
+Linked List of TransferBatches
+
+### Corrupted
+
+if Cur->GroupId < ptrGroup Array[I] and Cur->Next->GroupId == ptrGroup Array[I]
+ -> first transferbatch count < maxcached per transfer batch
+ -> memcpy(Batch + Count, Array, sizeof(batch)*N)
+
+### New BatchGroup created
+
+- all fields are reset :(
+
+## Add blocks to freelist
+
+- If blocks are from batch class id, create batchgroup and transferbatches in the provided blocks
+- Add to BatchGroup depending on group (based on address)
+  - Iterates over BatchGroup list -> can corrupt
+
+
