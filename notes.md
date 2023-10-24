@@ -29,6 +29,18 @@ Checksum:          16 bits
 Offset is generally 0, checksum is set to 0 for calculation of the checksum.
 If we have one allocation, we know the size, we might know the origin depending on context, state has to be allocated, and ClassId can be calculated from the size based on the configuration. So the only things we don't know are the chunk ptr and cookie, but there is a good chance we know the ptr address too. Therefore if we have one checksum leak, we can bruteforce the cookie since it's only 32 bits, and crc32 is pretty fast. (At least in C, need to find a way to do it in Python still)
 
+## Install scudocookie library
+
+`pip install scudocookie/dist/scudocookie-0.1-cp39-cp39-linux_x86_64.whl`
+
+Example usage:
+
+```
+from scudocookie import bruteforce
+
+cookie = bruteforce(addr, checksum, header)
+```
+
 # Deallocate
 
 Checks:
@@ -43,7 +55,7 @@ Checks:
 
 Notes:
  - Checksum is recalculated when state changes
- - Size check local cache? -> None!!!
+ - Size check local cache? -> None, but size reset on allocation
  - ClassId 0 -> treated like secondary
 
 # Allocate
