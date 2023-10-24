@@ -183,3 +183,14 @@ if Cur->GroupId < ptrGroup Array[I] and Cur->Next->GroupId == ptrGroup Array[I]
   - Iterates over BatchGroup list -> can corrupt
 
 
+## TransferBatch
+
+Batch pointers
+Count
+
+
+
+
+- Overflow change class id
+- Implement overflow
+
