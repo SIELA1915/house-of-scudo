@@ -13,11 +13,11 @@ int main() {
 
     char* firstChunk = malloc(8);
     printf("address: %p\n", firstChunk);
-    printf("header: %llu\n", *(unsigned long long*)(firstChunk - 16));
+    printf("header: 0x%lx\n", ((unsigned long*)firstChunk)[-2]);
     char* secondChunk = malloc(8);
 
     printf("secondChunkAddress: %p\n", secondChunk);
-    printf("secondChunkHeader: %llu\n", *(unsigned long long*)(secondChunk - 16));
+    printf("secondChunkHeader: 0x%lx\n", ((unsigned long*)secondChunk)[-2]);
 
     gets(firstChunk);
 
