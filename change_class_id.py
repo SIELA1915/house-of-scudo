@@ -2,7 +2,6 @@
 from pwn import *
 from utils import *
 from scudocookie import bruteforce, calc_checksum
-from crc32c import crc32c
 
 elf = context.binary = ELF("malloc-menu-linux/malloc-menu-linux")
 
