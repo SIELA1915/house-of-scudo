@@ -206,3 +206,12 @@ Count
 - Overflow change class id
 - Implement overflow
 
+
+
+# Free primary as secondary
+
+- Change class id and recalculate checksum
+- Free it
+- Block is added to cache
+- If there were no allocated secondary blocks, breaks the inuselist (size overflow)
+- Need to set CommitSize and CommitBase to be eligible for retrieval from cache
