@@ -15,13 +15,17 @@ int main() {
     printf("address: %p\n", firstChunk);
     printf("header: 0x%lx\n", ((unsigned long*)firstChunk)[-2]);
     char* secondChunk = malloc(8);
-
-    printf("secondChunkAddress: %p\n", secondChunk);
-    printf("secondChunkHeader: 0x%lx\n", ((unsigned long*)secondChunk)[-2]);
+    printf("overflowable: %d\n", firstChunk < secondChunk);
 
     gets(firstChunk);
 
+    free(secondChunk);
+
+    char* thirdChunk = malloc(150);
+    printf("address: %p\n", thirdChunk);
+
     // Don't exit
-    char test;
-    gets(test);
+    while (1) {
+        continue;
+    }
 }
