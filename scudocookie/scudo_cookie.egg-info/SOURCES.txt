@@ -1,7 +1,0 @@
-pyproject.toml
-scudocookie.c
-setup.py
-scudo_cookie.egg-info/PKG-INFO
-scudo_cookie.egg-info/SOURCES.txt
-scudo_cookie.egg-info/dependency_links.txt
-scudo_cookie.egg-info/top_level.txt
