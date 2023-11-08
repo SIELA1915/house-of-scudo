@@ -102,6 +102,8 @@ perclass_chunk = malloc(io, 2000)[1]
 
 print(f'perclass chunk: 0x{perclass_chunk:x}')
 
+# create perclass structure in the following perclass structure
+
 # =============================================================================
 
 io.interactive()

