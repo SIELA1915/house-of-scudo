@@ -130,3 +130,38 @@ def header_set_state(header, state) -> int:
 
 def header_set_class_id(header, class_id) -> int:
     return (header & ~0xf) + class_id
+
+
+def next_random(state) -> int:
+    new_state = state
+    new_state ^= new_state << 13
+    new_state &= (1<<32)-1
+    new_state ^= new_state >> 17
+    new_state &= (1<<32)-1
+    new_state ^= new_state << 5
+    new_state &= (1<<32)-1
+    return new_state
+
+def shuffle_range(start_addr, class_id, rand_state):
+    size = class_id_to_size(class_id)
+    max_cached = max_cached_for_size(size) * 8
+    res = list(range(start_addr, start_addr+(max_cached*size), size))
+    new_rand_state = rand_state
+    for i in range(len(res)-1, 0, -1):
+        tmp = res[i]
+        new_rand_state = next_random(new_rand_state)
+        res[i] = res[new_rand_state % (i+1)]
+        res[new_rand_state % (i+1)] = tmp
+
+    return (new_rand_state, res)
+
+def class_id_to_size(class_id):
+    class_sizes = [0, 32, 64, 96, 128, 160, 192, 224, 256, 320,
+                   384, 448, 512, 640, 768, 896, 1024, 1280, 1536, 1792,
+                   2048, 2560, 3072, 3584, 4096, 5120, 6144, 7168, 8192, 10240,
+                   12288, 14336, 16384, 20480, 24576, 28672, 32768, 40960, 49152, 57344,
+                   65536, 81920, 98304, 114688, 131072]
+    return class_sizes[class_id]
+
+def max_cached_for_size(size):
+    return max(min(int((1<<10)/size), 14), 1)
