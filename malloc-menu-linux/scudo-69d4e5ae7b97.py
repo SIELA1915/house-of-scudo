@@ -25,7 +25,7 @@ class Config(metaclass=Singleton):
     compact_pointer = ctypes.c_uint64
 
     def __init__(self):
-        bit64 = gef and gef.arch.ptrsize == 8
+        bit64 = True
         min_alignment = (4 if bit64 else 3)
         compact_pointer = ctypes.c_uint64 if bit64 else ctypes.c_uint32
         try:
