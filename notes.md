@@ -41,6 +41,43 @@ from scudocookie import bruteforce
 cookie = bruteforce(addr, checksum, header)
 ```
 
+# Build LLVM libc
+
+[https://libc.llvm.org/full_host_build.html](https://libc.llvm.org/full_host_build.html) Reference tutorial from llvm website. Using build type Release since Debug caused linking to use too much memory (Windows with WSL). Make sure `$SYSROOT` is set for `cmake` and `ninja` commands to not mess up your system.
+
+```
+cd llvm-project  # The llvm-project checkout
+mkdir build
+cd build
+SYSROOT=/path/to/sysroot
+
+cmake ../llvm \
+  -G Ninja \
+  -DLLVM_ENABLE_PROJECTS="clang;libc;lld;compiler-rt" \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_C_COMPILER=clang \
+  -DCMAKE_CXX_COMPILER=clang++ \
+  -DLLVM_LIBC_FULL_BUILD=ON \
+  -DLLVM_LIBC_INCLUDE_SCUDO=ON \
+  -DCOMPILER_RT_BUILD_SCUDO_STANDALONE_WITH_LLVM_LIBC=ON \
+  -DCOMPILER_RT_BUILD_GWP_ASAN=OFF \
+  -DCOMPILER_RT_SCUDO_STANDALONE_BUILD_SHARED=OFF \
+  -DCLANG_DEFAULT_LINKER=lld \
+  -DCLANG_DEFAULT_RTLIB=compiler-rt \
+  -DDEFAULT_SYSROOT=$SYSROOT \
+  -DCMAKE_INSTALL_PREFIX=$SYSROOT \
+  -DLLVM_PARALLEL_LINK_JOBS=1
+  
+ninja install-clang install-builtins install-compiler-rt  \
+   install-core-resource-headers install-libc install-lld
+```
+
+Then to build using the static linked LLVM libc (dynamic linking not available at the moment):
+
+`$SYSROOT/bin/clang -static malloc-menu.c -o malloc-menu-libc`
+
+
+
 # Deallocate
 
 Checks:

@@ -28,7 +28,7 @@ void* get_addr() {
     case 2:
         printf("Enter the address: ");
         void* addr;
-        scanf("%p", &addr);
+        scanf("%llx", (long long unsigned*)&addr);
 
         return addr;
     default:
@@ -62,7 +62,7 @@ int main() {
             blocks[num_blocks].address = malloc(size);
             blocks[num_blocks].size = size;
             
-            printf("Allocated block with index %d at address %p\n", num_blocks, blocks[num_blocks].address);
+            printf("Allocated block with index %d at address 0x%llx\n", num_blocks, (long long unsigned)blocks[num_blocks].address);
             
             ++num_blocks;
             break;
@@ -107,7 +107,7 @@ int main() {
         case 5:
             printf("%d blocks:\n", num_blocks);
             for (int i = 0; i < num_blocks; ++i) {
-                printf("\taddress: %p size: %zu\n", blocks[i].address, blocks[i].size);
+                printf("\taddress: %llx size: %zu\n", (long long unsigned)blocks[i].address, blocks[i].size);
             }
             break;
         case 6:
