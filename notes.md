@@ -252,3 +252,249 @@ Count
 - Block is added to cache
 - If there were no allocated secondary blocks, breaks the inuselist (size overflow)
 - Need to set CommitSize and CommitBase to be eligible for retrieval from cache
+
+
+# Alloc stats
+
+`perf stat -r 10 <command>`
+`LD_PRELOAD=../malloc-menu-linux/libscudo-linux-fixed.so /usr/lib/linux-tools/5.15.0-89-generic/perf stat -r 10 ./benchmark`
+
+
+## Repeated single block alloc/free
+
+### unfixed older
+```
+ Performance counter stats for './single-block-used' (10 runs):
+
+           5519.27 msec task-clock:u              #    1.002 CPUs utilized            ( +-  0.58% )
+                 0      context-switches:u        #    0.000 /sec
+                 0      cpu-migrations:u          #    0.000 /sec
+           1000135      page-faults:u             #  181.739 K/sec                    ( +-  0.00% )
+        4005672303      cycles:u                  #    0.728 GHz                      ( +-  7.28% )
+         370446025      stalled-cycles-frontend:u #    7.31% frontend cycles idle     ( +- 71.63% )
+         174243411      stalled-cycles-backend:u  #    3.44% backend cycles idle      ( +-  4.29% )
+        3444492870      instructions:u            #    0.68  insn per cycle
+                                                  #    0.39  stalled cycles per insn  ( +-  0.00% )
+         748395384      branches:u                #  135.995 M/sec                    ( +-  0.00% )
+          20565716      branch-misses:u           #    2.75% of all branches          ( +-  0.32% )
+
+            5.5081 +- 0.0325 seconds time elapsed  ( +-  0.59% )
+```
+
+### unfixed latest
+```
+ Performance counter stats for './single-block-used' (10 runs):
+
+           5896.21 msec task-clock:u              #    1.010 CPUs utilized            ( +-  0.47% )
+                 0      context-switches:u        #    0.000 /sec
+                 0      cpu-migrations:u          #    0.000 /sec
+           1000133      page-faults:u             #  171.426 K/sec                    ( +-  0.00% )
+        6996041786      cycles:u                  #    1.199 GHz                      ( +-  4.72% )
+        2331966149      stalled-cycles-frontend:u #   39.84% frontend cycles idle     ( +- 14.08% )
+         148940106      stalled-cycles-backend:u  #    2.54% backend cycles idle      ( +-  9.65% )
+        4446545261      instructions:u            #    0.76  insn per cycle
+                                                  #    0.26  stalled cycles per insn  ( +-  0.00% )
+         937405794      branches:u                #  160.675 M/sec                    ( +-  0.00% )
+          32364749      branch-misses:u           #    3.45% of all branches          ( +-  0.37% )
+
+            5.8379 +- 0.0283 seconds time elapsed  ( +-  0.49% )
+```
+
+### fixed latest
+```
+ Performance counter stats for './single-block-used' (10 runs):
+
+           5935.06 msec task-clock:u              #    1.020 CPUs utilized            ( +-  0.40% )
+                 0      context-switches:u        #    0.000 /sec
+                 0      cpu-migrations:u          #    0.000 /sec
+           1000135      page-faults:u             #  172.050 K/sec                    ( +-  0.00% )
+        7313517637      cycles:u                  #    1.258 GHz                      ( +-  4.23% )
+        2411260930      stalled-cycles-frontend:u #   38.52% frontend cycles idle     ( +- 12.70% )
+         241788734      stalled-cycles-backend:u  #    3.86% backend cycles idle      ( +-  4.85% )
+        4620547666      instructions:u            #    0.74  insn per cycle
+                                                  #    0.32  stalled cycles per insn  ( +-  0.00% )
+         971405064      branches:u                #  167.108 M/sec                    ( +-  0.00% )
+          33341124      branch-misses:u           #    3.43% of all branches          ( +-  0.84% )
+
+            5.8170 +- 0.0230 seconds time elapsed  ( +-  0.39% )
+```
+
+
+## Repeated simultaneous 1000 blocks allocation then free
+
+### unfixed older
+```
+ Performance counter stats for './many-blocks-used' (10 runs):
+
+           6592.08 msec task-clock:u              #    0.997 CPUs utilized            ( +-  0.42% )
+                 0      context-switches:u        #    0.000 /sec
+                 0      cpu-migrations:u          #    0.000 /sec
+           1000134      page-faults:u             #  152.185 K/sec                    ( +-  0.00% )
+        5210360072      cycles:u                  #    0.793 GHz                      ( +-  0.35% )
+        1222602996      stalled-cycles-frontend:u #   23.34% frontend cycles idle     ( +-  1.80% )
+         502367048      stalled-cycles-backend:u  #    9.59% backend cycles idle      ( +-  4.14% )
+        3467490377      instructions:u            #    0.66  insn per cycle
+                                                  #    0.32  stalled cycles per insn  ( +-  0.00% )
+         755395003      branches:u                #  114.945 M/sec                    ( +-  0.00% )
+          20611457      branch-misses:u           #    2.73% of all branches          ( +-  0.95% )
+
+            6.6130 +- 0.0351 seconds time elapsed  ( +-  0.53% )
+```
+
+### unfixed latest
+```
+ Performance counter stats for './many-blocks-used' (10 runs):
+
+           7006.95 msec task-clock:u              #    0.987 CPUs utilized            ( +-  0.37% )
+                 0      context-switches:u        #    0.000 /sec
+                 0      cpu-migrations:u          #    0.000 /sec
+           1000136      page-faults:u             #  141.913 K/sec                    ( +-  0.00% )
+        6463628335      cycles:u                  #    0.917 GHz                      ( +-  0.44% )
+        1552738627      stalled-cycles-frontend:u #   23.84% frontend cycles idle     ( +-  2.65% )
+         341332890      stalled-cycles-backend:u  #    5.24% backend cycles idle      ( +-  6.80% )
+        4469540499      instructions:u            #    0.69  insn per cycle
+                                                  #    0.37  stalled cycles per insn  ( +-  0.00% )
+         944403124      branches:u                #  134.005 M/sec                    ( +-  0.00% )
+          31714971      branch-misses:u           #    3.36% of all branches          ( +-  0.95% )
+
+            7.0976 +- 0.0370 seconds time elapsed  ( +-  0.52% )
+```
+
+### fixed latest
+```
+ Performance counter stats for './many-blocks-used' (10 runs):
+
+           9577.59 msec task-clock:u              #    0.973 CPUs utilized            ( +-  0.42% )
+                 0      context-switches:u        #    0.000 /sec
+                 0      cpu-migrations:u          #    0.000 /sec
+           1000138      page-faults:u             #  102.972 K/sec                    ( +-  0.00% )
+       15694047853      cycles:u                  #    1.616 GHz                      ( +-  0.18% )
+        2013605657      stalled-cycles-frontend:u #   12.75% frontend cycles idle     ( +-  1.13% )
+        2639314014      stalled-cycles-backend:u  #   16.71% backend cycles idle      ( +-  1.04% )
+       18130045944      instructions:u            #    1.15  insn per cycle
+                                                  #    0.15  stalled cycles per insn  ( +-  0.00% )
+        4974405509      branches:u                #  512.155 M/sec                    ( +-  0.00% )
+          34019939      branch-misses:u           #    0.68% of all branches          ( +-  0.17% )
+
+            9.8458 +- 0.0576 seconds time elapsed  ( +-  0.58% )
+```
+
+
+## Repeated random allocations/frees of 1000 blocks
+
+### unfixed older
+```
+ Performance counter stats for './random-blocks-order' (10 runs):
+
+           3780.25 msec task-clock:u              #    1.037 CPUs utilized            ( +-  0.77% )
+                 0      context-switches:u        #    0.000 /sec
+                 0      cpu-migrations:u          #    0.000 /sec
+            500393      page-faults:u             #  137.319 K/sec                    ( +-  0.00% )
+        2546433313      cycles:u                  #    0.699 GHz                      ( +-  0.59% )
+         397333219      stalled-cycles-frontend:u #   16.29% frontend cycles idle     ( +-  1.56% )
+         159282904      stalled-cycles-backend:u  #    6.53% backend cycles idle      ( +-  1.11% )
+        1821884390      instructions:u            #    0.75  insn per cycle
+                                                  #    0.20  stalled cycles per insn  ( +-  0.00% )
+         397301382      branches:u                #  109.029 M/sec                    ( +-  0.00% )
+          11676013      branch-misses:u           #    2.94% of all branches          ( +-  0.74% )
+
+            3.6467 +- 0.0291 seconds time elapsed  ( +-  0.80% )
+```
+
+### unfixed latest
+```
+ Performance counter stats for './random-blocks-order' (10 runs):
+
+           3746.38 msec task-clock:u              #    0.981 CPUs utilized            ( +-  1.11% )
+                 0      context-switches:u        #    0.000 /sec
+                 0      cpu-migrations:u          #    0.000 /sec
+            500390      page-faults:u             #  131.081 K/sec                    ( +-  0.00% )
+        2942292104      cycles:u                  #    0.771 GHz                      ( +-  0.76% )
+         347599996      stalled-cycles-frontend:u #   11.68% frontend cycles idle     ( +-  3.72% )
+         154891521      stalled-cycles-backend:u  #    5.20% backend cycles idle      ( +-  1.60% )
+        2323080650      instructions:u            #    0.78  insn per cycle
+                                                  #    0.16  stalled cycles per insn  ( +-  0.00% )
+         491829748      branches:u                #  128.838 M/sec                    ( +-  0.00% )
+          16904146      branch-misses:u           #    3.44% of all branches          ( +-  0.35% )
+
+            3.8206 +- 0.0418 seconds time elapsed  ( +-  1.10% )
+```
+
+### fixed latest
+```
+ Performance counter stats for './random-blocks-order' (10 runs):
+
+           4351.99 msec task-clock:u              #    0.993 CPUs utilized            ( +-  0.11% )
+                 0      context-switches:u        #    0.000 /sec
+                 0      cpu-migrations:u          #    0.000 /sec
+            500387      page-faults:u             #  114.279 K/sec                    ( +-  0.00% )
+        5312778609      cycles:u                  #    1.213 GHz                      ( +-  0.10% )
+         499379584      stalled-cycles-frontend:u #    9.37% frontend cycles idle     ( +-  0.86% )
+         693098213      stalled-cycles-backend:u  #   13.00% backend cycles idle      ( +-  0.34% )
+        5808080261      instructions:u            #    1.09  insn per cycle
+                                                  #    0.12  stalled cycles per insn  ( +-  0.02% )
+        1515662907      branches:u                #  346.149 M/sec                    ( +-  0.02% )
+          18073170      branch-misses:u           #    1.19% of all branches          ( +-  0.38% )
+
+           4.38057 +- 0.00496 seconds time elapsed  ( +-  0.11% )
+```
+
+
+## Repeated random allocations/frees of 1000 blocks, 500 blocks initially allocated
+
+### unfixed older
+```
+ Performance counter stats for './random-half-blocks-order' (10 runs):
+
+           3640.64 msec task-clock:u              #    1.005 CPUs utilized            ( +-  0.34% )
+                 0      context-switches:u        #    0.000 /sec
+                 0      cpu-migrations:u          #    0.000 /sec
+            500683      page-faults:u             #  138.339 K/sec                    ( +-  0.00% )
+        2416742218      cycles:u                  #    0.668 GHz                      ( +-  0.42% )
+         345321983      stalled-cycles-frontend:u #   14.22% frontend cycles idle     ( +-  2.87% )
+         151300424      stalled-cycles-backend:u  #    6.23% backend cycles idle      ( +-  1.42% )
+        1822807550      instructions:u            #    0.75  insn per cycle
+                                                  #    0.20  stalled cycles per insn  ( +-  0.00% )
+         397503577      branches:u                #  109.831 M/sec                    ( +-  0.00% )
+          11350331      branch-misses:u           #    2.86% of all branches          ( +-  0.44% )
+
+            3.6220 +- 0.0122 seconds time elapsed  ( +-  0.34% )
+```
+
+### unfixed latest
+```
+ Performance counter stats for './random-half-blocks-order' (10 runs):
+
+           3735.29 msec task-clock:u              #    0.993 CPUs utilized            ( +-  0.37% )
+                 0      context-switches:u        #    0.000 /sec
+                 0      cpu-migrations:u          #    0.000 /sec
+            500678      page-faults:u             #  133.260 K/sec                    ( +-  0.00% )
+        2952084437      cycles:u                  #    0.786 GHz                      ( +-  0.32% )
+         377885874      stalled-cycles-frontend:u #   12.85% frontend cycles idle     ( +-  1.59% )
+         114284279      stalled-cycles-backend:u  #    3.88% backend cycles idle      ( +-  3.77% )
+        2324278878      instructions:u            #    0.79  insn per cycle
+                                                  #    0.15  stalled cycles per insn  ( +-  0.00% )
+         492083591      branches:u                #  130.972 M/sec                    ( +-  0.00% )
+          16998050      branch-misses:u           #    3.45% of all branches          ( +-  0.26% )
+
+            3.7602 +- 0.0142 seconds time elapsed  ( +-  0.38% )
+```
+
+### fixed latest
+```
+ Performance counter stats for './random-half-blocks-order' (10 runs):
+
+           4606.58 msec task-clock:u              #    1.001 CPUs utilized            ( +-  0.47% )
+                 0      context-switches:u        #    0.000 /sec
+                 0      cpu-migrations:u          #    0.000 /sec
+            500691      page-faults:u             #  108.896 K/sec                    ( +-  0.00% )
+        6033179258      cycles:u                  #    1.312 GHz                      ( +-  0.21% )
+         498366294      stalled-cycles-frontend:u #    8.30% frontend cycles idle     ( +-  1.72% )
+         894513131      stalled-cycles-backend:u  #   14.89% backend cycles idle      ( +-  0.27% )
+        6832879007      instructions:u            #    1.14  insn per cycle
+                                                  #    0.13  stalled cycles per insn  ( +-  0.02% )
+        1819209128      branches:u                #  395.661 M/sec                    ( +-  0.02% )
+          18405741      branch-misses:u           #    1.01% of all branches          ( +-  0.35% )
+
+            4.5997 +- 0.0214 seconds time elapsed  ( +-  0.47% )
+```
