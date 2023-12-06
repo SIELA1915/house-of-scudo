@@ -253,6 +253,31 @@ Count
 - If there were no allocated secondary blocks, breaks the inuselist (size overflow)
 - Need to set CommitSize and CommitBase to be eligible for retrieval from cache
 
+# New thoughts
+
+Add header builder
+Calculate PerClass location?
+Overwrite Allocator in local_cache
+
+Safe unlink exploit
+Secondary exploit
+
+
+
+# NEw
+
+Mindmap exploits
+predict allocation randomness
+libc with integrated scudo
+
+
+
+
+# 16.11.23
+
+config options
+
+
 
 # Alloc stats
 
