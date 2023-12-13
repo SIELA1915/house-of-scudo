@@ -587,43 +587,54 @@ config options
 
 ## mimalloc-bench
 
+Commands to run:
+
+```
+./build-bench-env.sh scudo scudo_fixed bench packages redis
+cd out/bench
+../../bench.sh allt scudo scudo_fixed
+```
+
+Results:
+
 ```
 #------------------------------------------------------------------
-# test         alloc       time    rss    user  sys  page-faults page-reclaims
-cfrac          scudo       08.82   4632   8.59  0.05 0           614
-cfrac          scudo_fixed 08.52   4644   8.43  0.03 0           618
-espresso       scudo       05.37   4704   5.27  0.03 0           640
-espresso       scudo_fixed 05.44   4708   5.39  0.05 0           643
-barnes         scudo       03.03   62200  2.90  0.06 0           4329
-barnes         scudo_fixed 03.25   63364  3.19  0.01 0           2901
-redis          scudo       5.159   9660   0.19  0.04 0           1474
-redis          scudo_fixed 4.820   9684   0.22  0.01 0           1481
-larsonN-sized  scudo       82.708  14688  5.51  0.14 6           2521
-larsonN-sized  scudo_fixed 67.638  15396  8.41  0.18 0           2692
-mstressN       scudo       00.14   12008  0.07  0.04 1           27306
-mstressN       scudo_fixed 00.13   12028  0.07  0.03 0           27410
-rptestN        scudo       2.211   23092  0.36  0.40 3           59795
-rptestN        scudo_fixed 1.522   16392  0.25  0.38 0           59246
-gs             scudo       01.38   40072  1.18  0.04 252         29345
-gs             scudo_fixed 01.26   40152  1.13  0.07 0           29696
-lua            scudo       05.85   71428  4.75  0.46 926         178671
-lua            scudo_fixed 05.38   71848  4.76  0.40 0           179362
-alloc-test1    scudo       04.82   15660  4.67  0.02 2           3011
-alloc-test1    scudo_fixed 04.89   15712  4.68  0.03 0           3013
-alloc-testN    scudo       05.42   15236  9.40  0.05 0           3757
-alloc-testN    scudo_fixed 05.34   15148  9.38  0.06 0           3937
-sh6benchN      scudo       06.67   478560 10.67 0.70 1           134372
-sh6benchN      scudo_fixed 06.58   478860 10.84 0.51 0           135097
-sh8benchN      scudo       43.33   151272 67.93 3.43 1           293981
-sh8benchN      scudo_fixed 41.48   151816 66.44 3.05 0           298107
-xmalloc-test   scudo       10.060  48904  7.78  0.34 3           25004
-xmalloc-testN  scudo_fixed 9.826   49136  7.78  0.33 0           28887
-cache-scratch1 scudo       01.40   4016   1.32  0.00 1           253
-cache-scratch1 scudo_fixed 01.33   3832   1.28  0.00 0           249
-cache-scratchN scudo       00.79   3944   1.40  0.00 0           254
-cache-scratchN scudo_fixed 00.76   3924   1.32  0.01 0           256
-glibc-simple   scudo       04.57   3472   4.38  0.02 1           331
-glibc-simple   scudo_fixed 03.76   3720   3.68  0.01 0           335
-glibc-thread   scudo       14.607  3932   3.49  0.01 1           401
-glibc-thread   scudo_fixed 14.650  3964   3.51  0.00 0           401
+|   test         | alloc       | time    | rss    | user  | sys  | page-faults | page-reclaims|
+|----------------|-------------|---------|--------|-------|------|-------------|--------------|
+| cfrac          | scudo       | 08.82   | 4632   | 8.59  | 0.05 | 0           | 614          |
+| cfrac          | scudo_fixed | 08.52   | 4644   | 8.43  | 0.03 | 0           | 618          |
+| espresso       | scudo       | 05.37   | 4704   | 5.27  | 0.03 | 0           | 640          |
+| espresso       | scudo_fixed | 05.44   | 4708   | 5.39  | 0.05 | 0           | 643          |
+| barnes         | scudo       | 03.03   | 62200  | 2.90  | 0.06 | 0           | 4329         |
+| barnes         | scudo_fixed | 03.25   | 63364  | 3.19  | 0.01 | 0           | 2901         |
+| redis          | scudo       | 5.159   | 9660   | 0.19  | 0.04 | 0           | 1474         |
+| redis          | scudo_fixed | 4.820   | 9684   | 0.22  | 0.01 | 0           | 1481         |
+| larsonN-sized  | scudo       | 82.708  | 14688  | 5.51  | 0.14 | 6           | 2521         |
+| larsonN-sized  | scudo_fixed | 67.638  | 15396  | 8.41  | 0.18 | 0           | 2692         |
+| mstressN       | scudo       | 00.14   | 12008  | 0.07  | 0.04 | 1           | 27306        |
+| mstressN       | scudo_fixed | 00.13   | 12028  | 0.07  | 0.03 | 0           | 27410        |
+| rptestN        | scudo       | 2.211   | 23092  | 0.36  | 0.40 | 3           | 59795        |
+| rptestN        | scudo_fixed | 1.522   | 16392  | 0.25  | 0.38 | 0           | 59246        |
+| gs             | scudo       | 01.38   | 40072  | 1.18  | 0.04 | 252         | 29345        |
+| gs             | scudo_fixed | 01.26   | 40152  | 1.13  | 0.07 | 0           | 29696        |
+| lua            | scudo       | 05.85   | 71428  | 4.75  | 0.46 | 926         | 178671       |
+| lua            | scudo_fixed | 05.38   | 71848  | 4.76  | 0.40 | 0           | 179362       |
+| alloc-test1    | scudo       | 04.82   | 15660  | 4.67  | 0.02 | 2           | 3011         |
+| alloc-test1    | scudo_fixed | 04.89   | 15712  | 4.68  | 0.03 | 0           | 3013         |
+| alloc-testN    | scudo       | 05.42   | 15236  | 9.40  | 0.05 | 0           | 3757         |
+| alloc-testN    | scudo_fixed | 05.34   | 15148  | 9.38  | 0.06 | 0           | 3937         |
+| sh6benchN      | scudo       | 06.67   | 478560 | 10.67 | 0.70 | 1           | 134372       |
+| sh6benchN      | scudo_fixed | 06.58   | 478860 | 10.84 | 0.51 | 0           | 135097       |
+| sh8benchN      | scudo       | 43.33   | 151272 | 67.93 | 3.43 | 1           | 293981       |
+| sh8benchN      | scudo_fixed | 41.48   | 151816 | 66.44 | 3.05 | 0           | 298107       |
+| xmalloc-test   | scudo       | 10.060  | 48904  | 7.78  | 0.34 | 3           | 25004        |
+| xmalloc-testN  | scudo_fixed | 9.826   | 49136  | 7.78  | 0.33 | 0           | 28887        |
+| cache-scratch1 | scudo       | 01.40   | 4016   | 1.32  | 0.00 | 1           | 253          |
+| cache-scratch1 | scudo_fixed | 01.33   | 3832   | 1.28  | 0.00 | 0           | 249          |
+| cache-scratchN | scudo       | 00.79   | 3944   | 1.40  | 0.00 | 0           | 254          |
+| cache-scratchN | scudo_fixed | 00.76   | 3924   | 1.32  | 0.01 | 0           | 256          |
+| glibc-simple   | scudo       | 04.57   | 3472   | 4.38  | 0.02 | 1           | 331          |
+| glibc-simple   | scudo_fixed | 03.76   | 3720   | 3.68  | 0.01 | 0           | 335          |
+| glibc-thread   | scudo       | 14.607  | 3932   | 3.49  | 0.01 | 1           | 401          |
+| glibc-thread   | scudo_fixed | 14.650  | 3964   | 3.51  | 0.00 | 0           | 401          |
 ```
