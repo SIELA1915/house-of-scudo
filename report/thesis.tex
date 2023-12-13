@@ -106,13 +106,31 @@ available at \url{https://github.com/hexhive/thesis_template}.}
 \chapter{Scudo Security Measures}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-
+Talk about chunk header integrity checks, checksum, class id, cache
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \chapter{Breaking the Cookie}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+To check the integrity of chunk headers, Scudo uses a CRC32 checksum
+whenever hardware CRC32 is available, otherwise it instead uses a software
+BSD checksum. Both of these checksum algorithms are similar in that they
+aren't cryptographically secure. The cookie used to calculate the checksum
+is 32 bits long and used as the starting value for the CRC32 (or BSD) checksum.
+However the actual checksum stored in a chunk header is only 16 bits long, so
+in order to shorten the checksum the XOR of the lower 16 bits with the higher
+16 bits is taken.
 
+Due to the checksum only being 16 bits, instead of the full 32 bits from the
+cookie, it is possible to find a cookie collision and produce the same checksums
+the original cookie would have produced. Indeed it is enough to get a single
+heap leak of a complete chunk header together with its address. To accomplish
+that we can simply bruteforce the cookie value until we find the same checksum
+that we leaked. Using a C program this takes around 1-2 seconds, however due to
+the poor performance of loops in python, the bruteforce does not natively work
+in python. Therefore we created a small python library written in native C code,
+which can be used to calculate checksums and bruteforce a cookie given the header
+leak data from within python.
 
 %%%%%%%%%%%%%%%%%%
 \chapter{Exploits}
@@ -166,6 +184,25 @@ When the free of that chunk then happens, it is handed to the secondary allocato
 
 \section{Exploit CommitBase}
 
+\subsection{Summary}
+
+- Header leak with corresponding address
+- At least one secondary chunk allocated
+- Free on any address where we control `0x40` bytes in front
+- Allocation of secondary chunk of known (approximate) size
+
+Result:
+We can choose an arbitrary location for the secondary chunk allocated
+
+\subsection{Requirements}
+
+The forge secondary exploit has a certain number of requirements that the target binary needs to fulfill.
+
+First of all we need a header leak of any chunk from the heap as well as it's address, in order to bruteforce the cookie. Afterwards we can forge any header checksum from the cookie we calculated from this leak.
+
+Second we need a free for which we can control a certain number of bytes before the free, more specifically we need to control `0x40` bytes in front of the address of the free. This is the size of the secondary header plus the size of the padded primary header.
+
+Third we need there to be at least one secondary chunk allocated before the free, and we need there to be another secondary allocation afterwards, of which we know the approximate size. This is the allocation where we will get our arbitrary access.
 
 
 
@@ -175,6 +212,15 @@ When the free of that chunk then happens, it is handed to the secondary allocato
 %%%%%%%%%%%%%%%%%%%%
 
 
+
+\section{Benchmark}
+
+In order to benchmark the changes of the mitigation, we used some custom benchmarks
+to test for impact with very targeted programs, as well as a benchmarking suite
+for malloc implementations, mimalloc-bench, which is usually used to compare many
+different allocators between each other.~\cite{mimalloc-bench} We slightly modified
+mimalloc-bench to include our patched scudo version, and ran the benchmarks between
+the latest scudo version and our patched version.
 
 
 %%%%%%%%%%%%%%%%%%%%
