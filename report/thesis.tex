@@ -132,27 +132,80 @@ in python. Therefore we created a small python library written in native C code,
 which can be used to calculate checksums and bruteforce a cookie given the header
 leak data from within python.
 
+The python library exposes four different methods, $bruteforce$ to bruteforce
+the cookie value from the address, checksum and header data taken from a header leak,
+$calc_checksum$ to calculate a checksum from the address and header data as well
+as the cookie value, and the same methods followed by $\_bsd$ to do the same
+for the BSD checksums which are used when no hardware CRC32 is available.
+
+
 %%%%%%%%%%%%%%%%%%
 \chapter{Exploits}
 %%%%%%%%%%%%%%%%%%
 
 \section{Change Class ID}
 
+\subsection{Summary}
 
+\begin{itemize}
+\item Header leak with corresponding address
+\item Free where we control the $0x10$ bytes in front of the address
+\end{itemize}
+
+Result:
+Move a primary chunk to another size class, making potentially larger chunks in a small
+chunk region and multiple chunks overlap.
+
+\subsection{Requirements}
+
+The change class ID exploit needs some flaws in the target binary to be applicable.
+First we need to somehow leak a header value along with its address, in order to
+bruteforce the cookie and forge new header checksums like explained earlier. Then the
+attacker also needs to have a free operation occurring, at an address in front of which
+we can write some bytes, specifically $0x10$ bytes in front of the free target. Finally
+there needs to be some primary chunk allocations after the free, which are located in
+the same class ID as our target we want to move the chunk to.
+
+\subsection{Explanation}
+
+For the retrieval of the cookie refer to the previous section for a thorough explanation
+on how it works.
+
+Once the attacker has the cookie, he needs to find a vulnerable free operation, where
+he can write data to the $0x10$ bytes in front of the free'd address. This can be
+achieved in different ways, but the most likely might be an overflow while writing to
+a chunk of a small size, causing the attacker to be able to write over the header of one
+of the next chunks. Though the exact offset from the first chunk which contains the
+overflow and the target header is random due to Scudo's defence mechanisms, the attacker
+can still manage to overwrite it with some spraying and random luck if he can execute the
+program as often as he wants.
+
+The attacker then calculates a new valid header with its corresponding checksum thanks to
+the bruteforced cookie. In this case the attacker probably wants to get a large chunk in
+the small chunk region, thus he will replace the header with one specifying a larger class
+ID instead of the original one.
+
+
+When the chunk with the forged header gets free'd, it will be put into the cache of the
+larger class ID, and when a chunk from that same class ID gets allocated again, Scudo will
+allocate a larger sized chunk in the small chunk region.
 
 \section{Safe Unlink Secondary}
 
 
 \subsection{Summary}
 
-- Header leak with corresponding address
-- Scudo library base leak
-- Three consecutive frees on the same address
-  - Control over the $0x10$ bytes in front of the address before the first two free's
-  - Control over the $0x40$ bytes in front of the address before the third free
+\begin{itemize}
+  \item Header leak with corresponding address
+  \item Scudo library base leak
+  \item Three consecutive frees on the same address
+  \item Control over the $0x10$ bytes in front of the address before the first two free's
+  \item Control over the $0x40$ bytes in front of the address before the third free
+\end{itemize}
 
 Result:
-Next allocation will be a chunk in the perclass structure itself (thread-local free list), allowing control of future allocations
+Next allocation will be a chunk in the perclass structure itself (thread-local free list),
+allowing control of future allocations
 
 
 \subsection{Requirements}
@@ -174,7 +227,7 @@ Then we need to have two locations in memory that point to the chunk we will tam
 
 Once we have setup the two addresses in the perclass array, we need to know it's address still. To calculate the address of the perclass array (s) we need to have a leak of some scudo address, like the base address where scudo is loaded or the address of the malloc function. We can calculate the offset needed from there based on the scudo version, and then advance by $0x100$ times the value of the class id where we free'd the chunks. Then we just need to guess the number of chunks present in the perclass structure of that class id.
 
-Finally we need to prepare the header of the final free that will trigger the safe unlink. For that we need to configure a fake secondary header in front of the primary header, as well as modifying the latter to set it's class id to 0. We set the prev ($chunk_addr - 0x40$) to the first of our locations $- 0x8$ and the next ($chunk_addr - 0x38$) to the second of our locations. With the perclass setup, we can set both of them to the address where the first of the two addresses is stored.
+Finally we need to prepare the header of the final free that will trigger the safe unlink. For that we need to configure a fake secondary header in front of the primary header, as well as modifying the latter to set it's class id to 0. We set the prev ($chunk\_addr - 0x40$) to the first of our locations $- 0x8$ and the next ($chunk\_addr - 0x38$) to the second of our locations. With the perclass setup, we can set both of them to the address where the first of the two addresses is stored.
 Next follow the CommitBase, CommitSize and MapBase, MapSize. We can set them to the values we want, we can set them to whatever since we don't actually use them. They have a size of $0x8$ bytes each.
 Finally we just need to set the primary header with the class id set to 0 and the checksum recalculated.
 
@@ -186,10 +239,12 @@ When the free of that chunk then happens, it is handed to the secondary allocato
 
 \subsection{Summary}
 
-- Header leak with corresponding address
-- At least one secondary chunk allocated
-- Free on any address where we control `0x40` bytes in front
-- Allocation of secondary chunk of known (approximate) size
+\begin{itemize}
+  \item Header leak with corresponding address
+  \item At least one secondary chunk allocated
+  \item Free on any address where we control $0x40$ bytes in front
+  \item Allocation of secondary chunk of known (approximate) size
+\end{itemize}
 
 Result:
 We can choose an arbitrary location for the secondary chunk allocated
@@ -200,7 +255,7 @@ The forge secondary exploit has a certain number of requirements that the target
 
 First of all we need a header leak of any chunk from the heap as well as it's address, in order to bruteforce the cookie. Afterwards we can forge any header checksum from the cookie we calculated from this leak.
 
-Second we need a free for which we can control a certain number of bytes before the free, more specifically we need to control `0x40` bytes in front of the address of the free. This is the size of the secondary header plus the size of the padded primary header.
+Second we need a free for which we can control a certain number of bytes before the free, more specifically we need to control $0x40$ bytes in front of the address of the free. This is the size of the secondary header plus the size of the padded primary header.
 
 Third we need there to be at least one secondary chunk allocated before the free, and we need there to be another secondary allocation afterwards, of which we know the approximate size. This is the allocation where we will get our arbitrary access.
 
@@ -211,7 +266,22 @@ Third we need there to be at least one secondary chunk allocated before the free
 \chapter{Mitigation}
 %%%%%%%%%%%%%%%%%%%%
 
+The Safe Unlink Secondary exploit was already fixed in the latest scudo version, and
+we only detected it due to partly working with an older version of scudo. However it
+worked in certain configurations up to the version $XXX$.
 
+The CommitBase exploit on the other hand was still applicable to the latest scudo
+version as of this project. So after discovering it and having proven it works, we
+also thought about a possible mitigation, which was proposed to the official scudo/LLVM
+team in form of a pull request on December 13th, 2023.
+
+This proposed mitigation tracks in a separate memory region the addresses of all currently allocated secondary chunks and only adds free'd secondary chunks to the cache if they were recorded in this dedicated memory region.
+
+The tracking in this mitigation happens through a simple list of addresses, which is looped over at allocation/deallocation. Each block of contiguous memory has a at compile time configurable number of addresses stored, as well as one additional address pointing to the next block in case there are more addresses.
+
+Two options where added in the Allocator Config to configure the exact functioning
+of the mitigation and to completely disable the mitigation if it is deemed too
+expensive in some configurations.
 
 \section{Benchmark}
 
@@ -221,6 +291,8 @@ for malloc implementations, mimalloc-bench, which is usually used to compare man
 different allocators between each other.~\cite{mimalloc-bench} We slightly modified
 mimalloc-bench to include our patched scudo version, and ran the benchmarks between
 the latest scudo version and our patched version.
+
+While in the worst case (many secondary allocations with many secondary chunks being allocated at the same time) the performance impact is quite high, in usual usage it should not matter match. This seems to also be confirmed by the benchmark tests of mimalloc-bench we ran.
 
 
 %%%%%%%%%%%%%%%%%%%%
