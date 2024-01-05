@@ -79,19 +79,26 @@
   available at \url{https://github.com/hexhive/thesis_template}.}  \makeacks{}
 
 \begin{abstract}
+  Heap exploits are a very frequent issue in C programming, due to the quite high
+  complexity of memory management for programmers. Attackers can use such heap exploits
+  like overflows, double free's and similar to abuse the underlying mechanics of the heap
+  allocator and get even bigger control over heap memory such as arbitrary writes. However
+  Scudo is an allocator used on Android 11+ that is supposed to be specifically hardened
+  to prevent or at least complicate such attacks.
 
-  As a followup to the Bachelor Project for creating tooling for the Scudo allocator, this
-  project focuses on using the tool and the acquired knowledge of Scudo to try to find
-  exploits of heap errors, similar to existing exploitation techniques for the standard
-  libc allocator.
+  In this project we tried to look for exploits using these heap vulnerabilities and
+  targeting the mechanics of Scudo specifically. The goal was to find ways to trick the
+  Scudo allocator despite its defenses and get techniques similar to the exploitation
+  houses for the more common libc allocator.
 
-  Using the fact that the checksum used to secure the header of a chunk is breakable with
-  a single header leak, we introduce two exploits that use a free operation where we can
-  control preceding bytes to get control over the next chunk allocation locations.
+  We indeed discovered two exploits that by exploiting different heap vulnerabilities and
+  mechanics of the Scudo allocator trick it into returning a chunk at an address chosen by
+  the attacker, thus essentially achieving an arbitrary write primitive.
 
-  One of these two exploits has already been fixed in the latest Scudo version, while we
-  propose a mitigation for the second one.
-  
+  Additionally to the two exploits, we propose a mitigation that targets a mechanic of the
+  Scudo allocator that is exploited in both of our exploits. We also show that the impact
+  of our mitigation on the allocator's performance should be negligible in most common
+  scenarios.
 \end{abstract}
 
 \maketoc{}
@@ -100,41 +107,72 @@
 \chapter{Introduction}
 %%%%%%%%%%%%%%%%%%%%%%
 
-Bugs related to heap memory are one of the most frequent problems encountered
-by C developers since in bigger projects it can very quickly get hard to track
-all the resources that are open and which were already closed. It is very tedious
-to track all of such errors down, and just a single oversight might create a bug
-that opens a huge security vulnerability. Additionally, nowadays, many apps are so
-complex that they use various third-party libraries to do different tasks since
-re-implementing everything on your own would be a waste of time. However, one
-hardly has the time to check the whole source code of every library one uses, so
-one has to trust the library developers to have done their work correctly. An
-example of where such trust was the cause of a major vulnerability is a remote
-code execution in WhatsApp that was found in 2019, where a simple double free
-in a third-party GIF library allowed an attacker to get arbitrary remote code
-execution.~\cite{whatsappRCE}
+Heap vulnerabilities are a frequent and dangerous attack surface, as they allow attackers
+to exploit the underlying functions of the heap allocator itself, that works the same way
+independent of the applications data. This can also be seen by the fact that there exist
+generic techniques that, given some preconditions, give a pattern to escalate a heap
+vulnerability and to get for example remote code execution. There exist a lot of these
+techniques for the widely used glibc allocator, like the libc:free\_hook, unsafe unlink or
+the list of libc heap exploitation houses. Such heap vulnerabilities are also relevant in
+the Android environment, as can be seen by the example of a remote code execution found in
+WhatsApp back in 2019, which was caused by a double free.~\cite{whatsappRCE}
 
-Since checking all the code of all third-party libraries is practically not
-feasible, it is important to be able to debug heap bugs when they are found, in
-order to understand how they happen, the consequences of an exploit using the
-bug might have, and to be able to fix the bug rapidly. To encourage
-and assist developers in this process, there needs to be some freely available
-tools that make dynamic debugging of the heap easier.
+However Android devices don't use the popular glibc allocator, but since Android 11 use a
+new heap allocator called Scudo. Scudo was developed specifically with security in mind,
+to reduce the possibilities of an attacker to leverage the allocators mechanisms to get an
+arbitrary write primitive. For example Scudo uses a checksum to secure some critical
+metadata and it also tries to isolate some of the metadata, specifically all the free list
+related metadata, to its own region, to reduce the risk of possible corruption with a
+simple overflow. Also since it is designed completely differently, the known techniques
+for the glibc allocator don't work in the same way for Scudo.
 
-Since Android devices are used daily by millions of users, with many thousands to
-millions of different apps, the attack surface for exploits is huge. That might
-well be one of the reasons that Android uses the new and mostly unknown heap
-allocator called Scudo.~\cite{llvmScudo} Scudo tries to mitigate some of the potential
-vulnerabilities due to heap bugs directly in the allocator while keeping a high
-performance for memory allocations.
+Therefore in this project we try to find techniques to exploit mechanisms from the heap
+allocator itself, similar to the way such techniques exist for the glibc heap
+allocator. We start by defeating the checksum with a single leak of the metadata of a
+chunk, including the corresponding checksum. Then we show two exploits, that build on
+defeating the checksum to forge different headers and tricking Scudo to process them
+without any errors, which will allow us to gain an arbitrary write. Additionally to these
+two exploits, we also build some additional tools to facilitate further research and
+exploiting of Scudo, such as a python library to break the checksum and some templates for
+different exploit approaches to Scudo.
 
-In a previous project, we analyzed the inner workings of the Scudo allocator and developed
-a gef plugin to debug programs using the Scudo allocator.~\cite{scudoTooling} Using that
-plugin and the general knowledge acquired during that project, we aim to find some
-exploits that are possible with the Scudo allocator and figure out how to circumvent some
-of the specific mitigations already integrated in the Scudo allocator. If we find some
-exploits, we implement a possible mitigation for it and propose it to the official Scudo
-developers, as a pull request on the llvm github repository.
+Finally we detect that the two attacks we found both rely on a common mechanism, being how
+Scudo handles larger chunks compared to smaller ones. In order to protect against these
+attacks, we propose a mitigation that adds some additional checks to address that specific
+exploitation of the mechanism, and thus prevents these attacks. We evaluate our mitigation
+and find that in normal use, the overhead should be low enough to be acceptable. We
+therefore open a pull request to llvm, the official development team behind the Scudo
+allocator.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\chapter{Threat model}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+In order to search for exploits in Scudo, we first define a threat model, that defines
+what capabilities our imaginary attacker may have. Thanks to this threat model we will
+know how far we need to search and in what direction our exploits should be oriented.
+
+In our threat model, our attacker may have access to some basic heap vulnerabilities, such
+as overflows, double free's and arbitrary free's. These vulnerabilities can give the
+attacker some control over a restrained space of heap memory. The goal of the attacker
+however is to get an arbitrary read or write primitive, allowing them to control the whole
+heap memory. We don't consider any vulnerabilities in application specific data, so the
+attacker from our threat model should only exploit some allocator mechanisms and not rely
+on any application data.
+
+When using the glibc allocator, or some other unhardened allocators, these basic heap
+vulnerabilities can directly lead to an arbitrary write primitive, by using pointers
+stored in the controllable heap memory. In glibc this can for example be achieved by using
+a tcache forward pointer corruption, which exploits the fact that the cache linked list is
+stored inside the free chunks themselves. Since these free chunks may be controlled by a
+use after free or an overflow for example, the cache can be corrupted and an arbitrary
+address inserted. An example of such a corruption can be found on~\cite{tcachePoisoning}.
+
+However Scudo is built with such security issues in mind, therefore the use of pointers in
+the same memory regions as the chunks with data is avoided as much as possible. Therefore
+the attacker needs to trick some other, more complicated allocator mechanisms in order to
+gain the full arbitrary read or write primitive.
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \chapter{Scudo Security Measures}
@@ -224,37 +262,39 @@ saved in the cache, which is used in the CommitBase exploit which is explained i
 section.
 
 
-
-
-Talk about chunk header integrity checks, checksum, class id, cache
-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \chapter{Breaking the Cookie}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-To check the integrity of chunk headers, Scudo uses a CRC32 checksum whenever hardware
-CRC32 is available, otherwise it instead uses a software BSD checksum. Both of these
-checksum algorithms are similar in that they aren't cryptographically secure. The cookie
-used to calculate the checksum is 32 bits long and used as the starting value for the
-CRC32 (or BSD) checksum.  However the actual checksum stored in a chunk header is only 16
-bits long, so in order to shorten the checksum, the XOR of the lower 16 bits with the
-higher 16 bits is taken.
+To check the integrity of chunk headers, Scudo uses a simple checksum with a random 32-bit
+cookie which is used as seed to the hash algorithm. It may use one of two hashing
+algorithms, either CRC32 if hardware support is available for it, or the BSD checksum
+algorithm. Independent of which of the two algorithms is used, it is first applied to the
+cookie and the address, and then again applied to the previous result and the header with
+the checksum bytes in the header set to 0. If CRC32 is used, the result is then xor'd with
+itself shifted right by 16 bits, and truncated to the 16 least significant bits, whereas
+if the BSD checksum is used the cookie is already truncated to the 16 least significant
+bits and all calculations are done over 16 bits. The resulting checksum is therefore in
+either case 16 bits long.
+This checksum protects against blind heap overflows, since in a blind heap overflow the
+attacker has no way to forge the correct checksum. Therefore if the attacker tries to
+modify any values in the header, Scudo will try to verify the checksum of the header
+before taking any action with the chunk, and will crash the program since the checksum
+will not match the data in the header.
 
-Due to the checksum only being 16 bits, instead of the full 32 bits from the cookie, it is
-possible to find a cookie collision and produce the same checksums the original cookie
-would have produced. Indeed it is enough to get a single heap leak of a complete chunk
-header together with its address. To accomplish that we can simply bruteforce the cookie
-value until we find the same checksum that we leaked. Using a C program this takes around
-1–2 seconds, however due to the poor performance of loops in python, the bruteforce does
-not natively work in python. Therefore we created a small python library written in native
-C code, which can be used to calculate checksums and bruteforce a cookie given the header
-leak data from within python.
+However, these checksum/hash algorithms are not designed to be cryptographically
+secure. Also while the cookie is 32 bits long, the checksum is only 16 bits, and it is
+therefore possible to find a cookie collision and produce the same checksums the original
+cookie would have produced. Indeed it is enough to get a single heap leak of a complete
+chunk header together with its address. To accomplish that we can simply bruteforce the
+cookie value until we find the same checksum that we leaked.
 
-The python library exposes four different methods, \emph{bruteforce} to bruteforce the
-cookie value from the address, checksum and header data taken from a header leak,
-\emph{calc\_checksum} to calculate a checksum from the address and header data as well as
-the cookie value, and the same methods followed by \emph{\_bsd} to do the same for the BSD
-checksums which are used when no hardware CRC32 is available.
+Using a C program this takes around 1–2 seconds, however due to the poor performance of
+loops in python, the bruteforce does not natively work in python. Therefore we created a
+small python library written in native C code, which can be used to calculate checksums
+and bruteforce a cookie given the header leak data from within python. The python library
+exposes methods to bruteforce the cookie and to calculate a new checksum given a cookie
+for both the CRC32 and the BSD algorithms.
 
 
 %%%%%%%%%%%%%%%%%%
@@ -344,7 +384,7 @@ will store \emph{add2} at \emph{add1+0x8} and \emph{add1} at \emph{add2}. Theref
 and `add2` should be in some interesting location allowing elevation of our access.  The
 easiest way to get this is by having two more free's of the chunk in the previous step and
 being able to control the \emph{0x10} bytes in front of the address to modify the
-header. With this method we however also need a leak of the scudo lib base, in order to
+header. With this method we however also need a leak of the Scudo library base, in order to
 get the location of the thread-local free list (PerClass list).
 
 \subsection{Explanation}
@@ -356,7 +396,7 @@ get the location of the thread-local free list (PerClass list).
   \label{fig:SafeUnlinkMemory}
 \end{figure}
 
-As with most scudo exploits, the first step is to get the cookie, which can be done from
+As with most Scudo exploits, the first step is to get the cookie, which can be done from
 any single header leak, as explained in the dedicated section.
 
 Then we need to have two locations in memory that point to the chunk we will tamper with
@@ -372,8 +412,8 @@ the second free to mark the chunk as allocated again.
 
 Once we have setup the two addresses in the perclass array, we need to know it's address
 still. To calculate the address of the perclass array(s) we need to have a leak of some
-scudo address, like the base address where scudo is loaded or the address of the malloc
-function. We can calculate the offset needed from there based on the scudo version, and
+Scudo address, like the base address where Scudo is loaded or the address of the malloc
+function. We can calculate the offset needed from there based on the Scudo version, and
 then advance by \emph{0x100} times the value of the class id where we free'd the
 chunks. Then we just need to guess the number of chunks present in the perclass structure
 of that class id.
@@ -463,29 +503,44 @@ allocation the program would crash, so before we could get our arbitrary chunk.
 \chapter{Mitigation}
 %%%%%%%%%%%%%%%%%%%%
 
-The Safe Unlink Secondary exploit was already fixed in the latest scudo version, and we
-only detected it due to partly working with an older version of scudo. However it worked
-in certain configurations up to the version \emph{XXX}.
+Both our exploits depend on the same mechanism of how big chunks are handled, by setting
+the ClassId of a chunk to 0 before freeing it and therefore tricking Scudo into handling a
+small chunk as if it was a big chunk. Therefore in our mitigation, we implement an
+additional system to verify before freeing a large chunk that it was actually allocated as
+a large chunk.
 
-The CommitBase exploit on the other hand was still applicable to the latest scudo version
-as of this project. So after discovering it and having proven it works, we also thought
-about a possible mitigation, which was proposed to the official scudo/LLVM team in form of
-a pull request on December 13th, 2023.
+To be able to do this verification, we allocate a new special memory region, which can by
+default hold 1001 addresses. Whenever a new big chunk is allocated, its address is stored
+in the first free space in this special memory region, where a free space is defined by
+the address being 0. If the 1000 first addresses in this special memory region are all
+already used, a new region of 1001 addresses is allocated, and the address of this new
+region is stored as the 1001st address in the first region, creating space for 1000
+additional addresses.
 
-This proposed mitigation tracks in a separate memory region the addresses of all currently
-allocated secondary chunks and only adds free'd secondary chunks to the cache if they were
-recorded in this dedicated memory region.
+Whenever a big chunk is requested to be free'd, this special memory region is first
+searched for its address. If it is found, the space in the special memory region is set to
+0 to indicate it is free again, and the rest of the logic to free the big chunk continues
+normally. If however the address is not found in the special memory region, the free is
+ignored as it is assumed to be either a corrupt chunk or an attacker trying to trick Scudo
+into freeing a fake forged chunk.
 
-The tracking in this mitigation happens through a simple list of addresses, which is
-looped over at allocation/deallocation. Each block of contiguous memory has a at compile
-time configurable number of addresses stored, as well as one additional address pointing
-to the next block in case there are more addresses.
-
-Two options where added in the Allocator Config to configure the exact functioning of the
-mitigation and to completely disable the mitigation if it is deemed too expensive in some
+Two options where added in the Allocator Config to configure the details of the mitigation
+and to completely disable the mitigation if it is deemed too expensive in some
 configurations.
 
-\section{Benchmark}
+\section{Evaluation}
+
+\subsection{Effectiveness}
+
+After implementing the mitigation, we first checked to see if our exploits were indeed
+fixed by our mitigation. Indeed our exploit scripts still ran without error, however when
+displaying what was supposed to be our chosen address for our chunk allocation, with both
+our exploits the returned address didn't match our chosen address anymore. Since our fake
+chunks we are trying to free to trick the allocator mechanisms were in both cases
+originally small chunks, the mechanisms are never even triggered since our mitigation
+detects that the fake chunks are not supposed to be large chunks.
+
+\subsection{Performance}
 
 \begin{longtable}[h]{l r r}
   \caption{Custom benchmark results}\label{tab:CustomBenchmark} \\
@@ -511,7 +566,7 @@ test for impact with very targeted programs, results of which are show in
 \autoref{tab:CustomBenchmark}, as well as a benchmarking suite for malloc implementations,
 mimalloc-bench, which is usually used to compare many different allocators between each
 other.~\cite{mimalloc-bench} We slightly modified mimalloc-bench to include our patched
-scudo version, and ran the benchmarks between the latest scudo version and our patched
+Scudo version, and ran the benchmarks between the latest Scudo version and our patched
 version.
 
 While in the worst case (many secondary allocations with many secondary chunks being
@@ -635,17 +690,17 @@ we ran, results of which are shown in \autoref{tab:MimallocBench}.
 \chapter{Conclusion}
 %%%%%%%%%%%%%%%%%%%%
 
-In this project, we used our previous work and acquired knowledge on the scudo allocator
-and the gef plugin we built for it, to try to find some exploits that work on the scudo
+In this project, we used our previous work and acquired knowledge on the Scudo allocator
+and the gef plugin we built for it, to try to find some exploits that work on the Scudo
 allocator, similar to the glibc exploitation houses. The source code of the different
 exploitation scripts, the used exploitable programs, as well as some utilities to
 facilitate exploit development are available at
-https://github.com/SIELA1915/house-of-scudo.
+\url{https://github.com/SIELA1915/house-of-scudo}.
 
 We found two exploits, which are based on a common technique, which relies on breaking the
 cookie used to generate checksums, for which we implemented a python library taking
 advantage of the speed of C code to bruteforce the cookie given one header leak. One of
-the two exploits was coincidentally fixed by a change in the latest scudo versions, while
+the two exploits was coincidentally fixed by a change in the latest Scudo versions, while
 for the other exploit no fix was available. We therefore implemented a possible
 mitigation, which we benchmarked to test for the performance impact and then submitted to
 the official llvm repository in the form of a pull request.
