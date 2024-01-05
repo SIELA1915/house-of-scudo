@@ -19,7 +19,7 @@
 \usepackage{longtable}
 
 \newif\ifreview
-\reviewtrue
+\reviewfalse
 % To remove the reviews seet \reviewfalse
 %\reviewfalse
 
@@ -127,7 +127,7 @@ To harden applications on Android against such attacks, it does not use the popu
 allocator, but since Android 11 uses a new heap allocator called Scudo.~\cite{llvmScudo}
 Scudo was developed specifically with security in mind, to reduce the possibilities of an
 attacker to leverage the allocators mechanisms to get an arbitrary write primitive. Scudo
-uses a checksum to secure critical metadata stored in-line and it also tries to isolate
+uses a checksum to secure critical metadata stored in-line, and it also tries to isolate
 some of the metadata, specifically all the free list related metadata, to its own region,
 to reduce the risk of possible corruption with a simple overflow. Since it is designed
 completely differently, there is currently no existing study on an attack that uses the
@@ -138,7 +138,7 @@ allocator itself, similar to the way such techniques exist for the glibc heap
 allocator. We start by defeating the checksum with a single leak of the metadata of a
 chunk, including the corresponding checksum. Then we show two exploits, that build on
 defeating the checksum to forge different headers and tricking Scudo to process them
-without any errors, which will allow us to gain an arbitrary write. Additionally to these
+without any errors, which will allow us to gain an arbitrary write. In addition to these
 two exploits, we also build some additional tools to facilitate further research and
 exploiting of Scudo, such as a python library to break the checksum and some templates for
 different exploit approaches to Scudo.
@@ -174,7 +174,7 @@ use after free or an overflow for example, the cache can be corrupted and an arb
 address inserted. An example of such a corruption can be found on~\cite{tcachePoisoning}.
 
 However, Scudo is built with such security issues in mind, therefore the use of pointers in
-the same memory regions as the chunks with data is avoided as much as possible. Therefore
+the same memory regions as the chunks with data is avoided as much as possible. Therefore,
 the attacker needs to trick some other, more complicated allocator mechanisms in order to
 gain the full arbitrary read or write primitive.
 
@@ -187,107 +187,40 @@ performance and is therefore disable by default.
 \chapter{Scudo Security Measures}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-\philipp{right now this section isn't very focused on security measures}
-
-\philipp{you should explicitly introduce scudos two main security mechanism and 
-then have one section for each (after the basics section)}
-
-\philipp{one section about protected inline metadata: only very little inline 
-metadata. free list in segregated region/bss of scudo, 
-headers protected with checksum, secondary chunk header metadata, 
-stored in front of mmapped regions}
-
-\philipp{another section about segregated memory regions and random allocations 
-inside those regions (shorter than previous one, since we don't care too 
-much about this for our exploits)}
-
-\philipp{we will introduce all the other mechanisms when they become relevant 
-in the exploits/mitigations (such as the free list for the chunks)}
-
 \section{Basics}
 
-\philipp{don't talk about performance here, rest is fine}
 The Scudo hardened allocator divides the heap allocations it is asked to do into two big
 types of allocations, based on the size of the chunk to be allocated.  The smaller chunks
-are handled by the primary allocator inside Scudo, which is designed to optimize
-performance as much as possible by adapting to finer-grained size differences between
-these smaller chunks. All the big chunks are handled by the secondary allocator, which is
-less optimized, since the most frequent chunks are the small ones and thus the primary
-allocator has a bigger impact on performance than the secondary allocator.
+are handled by the primary allocator inside Scudo while the big chunks are handled by the
+secondary allocator, which stores some additional metadata differently.
 
-\section{Combined Chunk Header}
+\section{Protected Inline Metadata}
 
-\begin{figure}[h]
-  \centering
-  \begin{tabular}{l r}
-    \toprule
-    ClassId & 8 bits \\
-    State & 2 bits \\
-    OriginOrWasZeroed & 2 bits \\
-    SizeOrUnusedBytes & 20 bits \\
-    Offset & 16 bits \\
-    Checksum & 16 bits \\
-    \bottomrule
-  \end{tabular}
-  \caption{Layout of the Scudo chunk header}\label{fig:ScudoChunkHeader}
-\end{figure}
+Since Scudo was designed to be hardened against some heap vulnerabilities, metadata that
+is stored inline with the data is avoided wherever possible. If it still needs to store
+some metadata next to chunk data, it tries to secure it in some way.
 
-The chunks allocated by both the primary and the secondary allocator store some metadata
-in a combined header. This header is then stored just in front of the actual content of
-the chunk, such that it can easily be checked whenever the chunk gets accessed. An
-overview of the contents of this header can be seen in \autoref{fig:ScudoChunkHeader}. The
-ClassId identifies the class the chunk belongs to in case it was allocated by the primary
-allocator, with a ClassId of 0 meaning that the chunk was allocated by the secondary
-allocator. The header also contains information about the state of the chunk, which can be
-allocated, quarantined or available, as well as the origin of the allocation, e.g., malloc
-or new, which can be used to detect errors when the type of deallocation does not match
-the type of the allocation. Furthermore, the header includes the size for the primary
-chunks or the number of unused bytes for the secondary chunks and an offset, which is the
-distance from the beginning of the returned chunk to the beginning of the actual backend
-allocation.  Finally, the header contains a checksum, which is generated using a cookie (a
-random number generated during the initialization of the allocator), the heap address of
-the chunk, and the actual content of the header. This checksum is used for guarding
-against programming errors as well as attackers, and it is checked each time the header is
-loaded.
+For the header data that is stored before any of the primary or secondary chunks, this is
+done by using a simple checksum with a random global secret, that is verified before any
+action with the chunk is processed by the Scudo allocator. The secondary allocator stores
+some additional metadata in front of that protected header. While this additional metadata
+is not protected by a checksum, all secondary chunks are protected by guard pages before
+and after the chunk, so the secondary header metadata can't be modified by using an
+overflow either.
 
-\section{Secondary Chunk Header}
+The primary allocator stores all information related to its free list separated from the
+chunk data. The first level of the free list is stored in a thread-specific memory
+region, while the rest of the global free list is stored in a segregated region that is
+only used for allocator internal data.
 
-\begin{figure}[h]
-  \centering
-  \begin{tabular}{l r}
-    \toprule
-    Prev & 64 bits \\
-    Next & 64 bits \\
-    CommitBase & 64 bits \\
-    CommitSize & 64 bits \\
-    MemMap & 128 bits \\
-    \bottomrule
-  \end{tabular}
-  \caption{Secondary chunk header on linux}\label{fig:ScudoSecondaryChunkHeader}
-\end{figure}
+\section{Primary Memory Regions}
 
-The secondary header stores some additional information in a header which is prepended to
-the normal chunk header. First it stores pointers to the next and previous large chunk
-headers, which forms the doubly linked list of allocated secondary blocks. These pointers
-are used in the Safe Unlink Secondary exploit which is explained in a later section. Then
-it stores the CommitBase and CommitSize, which are the address of the chunk itself and its
-size. Lastly it stores some mapping information which can depend on the underlying
-operating system, but in the case of a Linux OS it simply corresponds to the MapBase and
-CommitBase. These are similar to CommitBase and CommitSize, but they may be slightly
-different due to alignment requirements. All these values are, contrary to the combined
-chunk header, not protected by a checksum, so they could be changed without trouble if we
-have write access to them.
-
-\section{Secondary Cache}
-
-The secondary allocator has its own cache, in which it simply stores the free'd secondary
-chunks in a simple list, and before allocating a new chunk it searches the list for a
-chunk whose size is at most a certain number of pages larger than the requested size. The
-values stored in this cache list, are based on the values of the secondary chunk header at
-the moment the chunk is free'd. Interestingly, no integrity checks are done on the values
-saved in the cache, which is used in the CommitBase exploit which is explained in a later
-section.
-
+The primary allocator separates its chunks into multiple size classes, depending on the
+size of the chunk. Each of these classes has its own dedicated memory region, increasing
+again the segregation between different chunk data. To further complicate the task of an
+attacker, the chunks inside each memory region are allocated in a randomized order, so
+that the attacker is unable to predict which chunk will next be allocated based on a
+sequence of previously allocated chunks without knowing the random seed used.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \chapter{Breaking the Cookie}
@@ -296,7 +229,7 @@ section.
 To check the integrity of chunk headers, Scudo uses a simple checksum with a random 32-bit
 cookie which is used as seed to the hash algorithm. It may use one of two hashing
 algorithms, either CRC32 if hardware support is available for it, or the BSD checksum
-algorithm. The following pseudo code demonstrates how the checksum is calculated.
+algorithm. The following pseudocode demonstrates how the checksum is calculated.
 \begin{verbatim}
 // Inputs
 uint32 cookie = randomInt()
@@ -327,15 +260,15 @@ will not match the data in the header.
 However, these checksum/hash algorithms are not designed to be cryptographically
 secure. While the cookie is 32 bits long, the checksum is only 16 bits, and it is
 therefore possible to find a cookie collision and produce the same checksums the original
-cookie would have produced. Indeed it is enough to get a single heap leak of a complete
+cookie would have produced. Indeed, it is enough to get a single heap leak of a complete
 chunk header together with its address in order to recover the cookie 
 and forge valid chunk headers.
-Recovering the cookie can be done by simply bruteforcing the
-cookie value until we find the same checksum that we leaked. Such a bruteforce of the
+Recovering the cookie can be done by simply brute-forcing the
+cookie value until we find the same checksum that we leaked. Such a brute-force of the
 cookie was already used by the un1fuzz hobby research group, and another researcher used a
 z3 solver to achieve the same thing.~\cite{un1fuzz}~\cite{z3SolveScudoCookie}
 
-Using a C program bruteforcing the cookie takes around 1–2 seconds, therefore we
+Using a C program brute-forcing the cookie takes around 1–2 seconds, therefore we
 implemented a C library that takes care of the checksum calculation and brute-forcing of
 the cookie given the necessary data. To facilitate integration with the pwntools python
 tooling often used for exploit development, we also provide python bindings for this
@@ -378,6 +311,12 @@ as our target we want to move the chunk to.
 For the retrieval of the cookie refer to the previous section for a thorough explanation
 on how it works.
 
+\begin{figure}[h!]
+  \centering
+  \includegraphics[width=\linewidth]{figures/ChangeClassID.png}
+  \caption{Illustration of the modification to chunk header}\label{fig:ChangeClassID}
+\end{figure}
+
 Once the attacker has the cookie, he needs to find a vulnerable free operation, where he
 can write data to the \emph{0x10} bytes in front of the free'd address. 
 This can be achieved in different ways, such as an overflow while writing to a chunk of a
@@ -403,15 +342,6 @@ ID instead of the original one.
 When the chunk with the forged header gets free'd, it will be put into the cache of the
 larger class ID, and when a chunk from that same class ID gets allocated again, Scudo will
 allocate a larger sized chunk in the small chunk region.
-
-\begin{figure}[h!]
-  \centering
-  \includegraphics[width=\linewidth]{figures/ChangeClassID.png}
-  \caption{Illustration of the modification to chunk header}\label{fig:ChangeClassID}
-\end{figure}
-
-\philipp{some diagram/graphic etc to show how the exploit works, what happens 
-when it succeeds etc would be very helpful for the reader}
 
 \section{Exploit CommitBase}
 
@@ -452,7 +382,13 @@ size. This is the allocation where we will get our arbitrary access.
 
 \subsection{Explanation}
 
-\philipp{figure as well}
+\begin{figure}[h!]
+  \centering
+  \includegraphics[width=\linewidth]{figures/CommitBase.png}
+  \caption{Illustration of how an attackers address gets from the header into an actual
+    chunk on the heap}\label{fig:CommitBase}
+\end{figure}
+
 The breaking of the cookie works exactly the same as explained previously, and the first
 part of this exploit also reuses a previously introduced exploit. Indeed, the first part is
 basically a change class ID exploit, except that we don't change the class ID to a
@@ -530,11 +466,11 @@ header.
   \centering
   \includegraphics[width=\linewidth]{figures/SafeUnlinkMemoryFrees.png}
   \caption{Illustration of forged linked list and the frees we
-    need}\label{fig:SafeUnlinkMemoryFrees}
+    need (left and right memory views correspond to the same memory)}\label{fig:SafeUnlinkMemoryFrees}
 \end{figure}
 
 As with most Scudo exploits, the first step is to get the cookie, which can be done from
-any single header leak, as explained in the dedicated section. This willl be used later,
+any single header leak, as explained in the dedicated section. This will be used later,
 to craft a fake secondary chunk by changing the class ID saved in the header to 0. This
 causes Scudo to look at the forged secondary chunk header and to parse some of the data
 contained in it, like the pointers to the previous and next in use secondary chunks. In
@@ -628,7 +564,7 @@ After implementing the mitigation, we first checked to see if our exploits were 
 fixed by our mitigation. Since our fake chunks we are trying to free to trick the
 allocator mechanisms were in both cases originally small chunks, the mechanisms are never
 even triggered since our mitigation detects that the fake chunks are not supposed to be
-large chunks. Therefore Scudo does abort the processing of the chunk before it gets to
+large chunks. Therefore, Scudo does abort the processing of the chunk before it gets to
 parsing the attacker controlled metadata.
 
 \subsection{Performance}
