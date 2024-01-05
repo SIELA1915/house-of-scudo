@@ -80,34 +80,27 @@
   available at \url{https://github.com/hexhive/thesis_template}.}  \makeacks{}
 
 \begin{abstract}
-  Heap exploits\philipp{no bugs are} are a very frequent issue in C programming, due to the quite high
-  complexity of memory management for programmers. Attackers can exploit such heap exploits \philipp{bugs}
+  Heap bugs are a very frequent issue in C programming, due to the quite high
+  complexity of memory management for programmers. Attackers can exploit such heap bugs
   like overflows, double free's and similar to abuse the underlying mechanics of the heap
-  allocator and achieve arbitrary memory write. 
-  \philipp{mention libc allocator exploitation houses/techniques}
+  allocator and get even bigger control over heap memory such as arbitrary writes. For the
+  common libc allocator there are a lot of known techniques to achieve that, a few of
+  which are known as heap exploitation houses. Scudo is an allocator used on
+  Android 11+ that is supposed to be specifically hardened to prevent or at least
+  complicate such attacks.~\cite{llvmScudo} However, there exists no documentation of any
+  tests of the resilience of Scudo to a dedicated attacker.
+
+  In this project we looked for exploits using these heap vulnerabilities and
+  targeting the mechanics of Scudo specifically. We discovered two exploits that use
+  different heap vulnerabilities and mechanics of the Scudo allocator to trick it into
+  returning a chunk at an address chosen by the attacker. These two exploits therefore
+  enable an arbitrary write primitive similar to the primitives provided by some libc
+  exploitation houses.
   
-  Scudo is an allocator used on Android 11+ that is supposed to be specifically hardened
-  to prevent or at least complicate such attacks.~\cite{llvmScudo}
-  \philipp{to this day the resilience of this allocator to a dedicated attacker 
-  remains untested.}
-
-  \philipp{instead of saying this was the plan and then repeat that this was 
-  achieved, just say what you achieved on a high level.}
-  In this project we tried to look for exploits using these heap vulnerabilities and
-  targeting the mechanics of Scudo specifically. The goal was to find ways to trick the
-  Scudo allocator despite its defenses and get techniques similar to the exploitation
-  houses for the more common libc allocator.
-  We indeed discovered two exploits that by exploiting different heap vulnerabilities and
-  mechanics of the Scudo allocator trick it into returning a chunk at an address chosen by
-  the attacker, thus essentially achieving an arbitrary write primitive.
-
-  \philipp{In addition to the attacks, we propose ...}
-  Additionally to the two exploits, we propose a mitigation that targets a mechanic of the
-  Scudo allocator that is exploited in both of our exploits\philipp{a mitigation that prevents 
-  prevents either of the discovered exploits(and also further hardens scudo)}. 
-  We show that the impact
-  of our mitigation on the allocator's performance should be negligible in most common
-  scenarios.
+  In addition to the attacks, we propose a mitigation that prevents either of the
+  discovered exploits by targeting a mechanic of the Scudo allocator that is used in both
+  of our exploits and which further hardens Scudo. We show that the impact of our
+  mitigation on the allocator's performance should be negligible in most common scenarios.
 \end{abstract}
 
 \maketoc{}
@@ -116,35 +109,29 @@
 \chapter{Introduction}
 %%%%%%%%%%%%%%%%%%%%%%
 
-Heap vulnerabilities are a frequent and dangerous attack surface, 
-\philipp{cite microsoft report}
-\philipp{expand a bit that such memory corruptions can lead to RCE}
-as they allow attackers
-\philipp{to get code execution.}
-\philipp{Attackers often leverage }
-the underlying mechanisms of the heap allocator itself.
-\philipp{For the widely used glibc allocator there exist generic ...}
->>>>>>> 5b7aabc (comments)
+Heap vulnerabilities are a frequent and dangerous attack surface and have been for a long
+time, as even Microsoft already stated back in 2013 that they were the most common type of
+vulnerability that they addressed through security updates.~\cite{microsoftHeapReport}
+These vulnerabilities can be used by an attacker to get remote code execution, essentially allowing
+the attacker to take control of the device.
+Attackers often leverage the underlying mechanisms of the heap allocator itself.
+For the widely used glibc allocator there exist
 generic techniques that, given some preconditions, give a pattern to escalate a heap
 vulnerability and to get remote code execution. 
-\philipp{free hook isn't really an exploitation technique, remove that}
-like the libc:free\_hook, unsafe unlink or
+like the unsafe unlink exploit or
 the list of libc heap exploitation houses. Such heap vulnerabilities are also relevant in
 the Android environment, as can be seen by the example of a remote code execution found in
 WhatsApp back in 2019, which was caused by a double free.~\cite{whatsappRCE}
 
-\philipp{Change the first sentence to improve the transition. Right 
-now it reads like Android is just not affected by this problem, for ex: to harden android applications 
-against such attacks ...}
-However Android devices don't use the popular glibc allocator, but since Android 11 use a
-new heap allocator called Scudo.~\cite{llvmScudo} Scudo was developed specifically with security in mind,
-to reduce the possibilities of an attacker to leverage the allocators mechanisms to get an
-arbitrary write primitive. Scudo uses a checksum to secure critical
-metadata stored in-line and it also tries to isolate some of the metadata, specifically all the free list
-related metadata, to its own region, to reduce the risk of possible corruption with a
-simple overflow. Ssince it is designed completely differently, the known techniques
-for the glibc allocator are not applicable to Scudo.
-\philipp{currently there doesn't exist a study on such attack.}
+To harden applications on Android against such attacks, it does not use the popular glibc
+allocator, but since Android 11 uses a new heap allocator called Scudo.~\cite{llvmScudo}
+Scudo was developed specifically with security in mind, to reduce the possibilities of an
+attacker to leverage the allocators mechanisms to get an arbitrary write primitive. Scudo
+uses a checksum to secure critical metadata stored in-line and it also tries to isolate
+some of the metadata, specifically all the free list related metadata, to its own region,
+to reduce the risk of possible corruption with a simple overflow. Since it is designed
+completely differently, there is currently no existing study on an attack that uses the
+known techniques for the glibc allocator to exploit Scudo.
 
 Therefore, in this project we try to find techniques to exploit mechanisms from the heap
 allocator itself, similar to the way such techniques exist for the glibc heap
@@ -160,29 +147,23 @@ Finally, we detect that the two attacks we found both rely on a common mechanism
 Scudo handles larger chunks compared to smaller ones. In order to protect against these
 attacks, we propose a mitigation that adds some additional checks to address that specific
 exploitation of the mechanism, and thus prevents these attacks. We evaluate our mitigation
-and find that \philipp{the overhead on benchmarks is negligible} in normal use, the overhead should be low enough to be acceptable. We
-therefore open a pull request to llvm, the official development team behind the Scudo
-allocator.
+and find that the overhead on benchmarks is negligible. We therefore open a pull request
+to llvm, the official development team behind the Scudo allocator.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \chapter{Threat model}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-\philipp{not sure this paragraph is necessary}
-In order to search for exploits in Scudo, we first define a threat model, that defines
-what capabilities our attacker has. Thanks to this threat model we will
-know how far we need to search and in what direction our exploits should be oriented.
-
-\philipp{don't use may just say attacker has access to..}
 In our threat model, the attacker has access to some basic heap vulnerabilities, such
-as overflows, double free's and arbitrary free's. 
-\philipp{our attacker also has an ASLR leak}
-These vulnerabilities can give the
+as overflows, double free's and arbitrary free's. Additionally, if address space layout
+randomization is used (ASLR), the attacker also has access to an ASLR leak through a
+channel, allowing him to know where some memory regions are loaded.
+These heap vulnerabilities can give the
 attacker some control over a restrained space of heap memory. The goal of the attacker
 however is to get an arbitrary write primitive, them to get full control of the 
 program. We don't consider any vulnerabilities in application specific data, so the
 attacker from our threat model should only exploit the allocator's mechanisms and not rely
-on any application data. \philipp{such as data/code pointers stored on the heap}
+on any application data, such as data or code pointers stored on the heap.
 
 When using the glibc allocator, or some other unhardened allocators, these basic heap
 vulnerabilities can directly lead to an arbitrary write primitive, by using pointers
@@ -196,8 +177,11 @@ However, Scudo is built with such security issues in mind, therefore the use of 
 the same memory regions as the chunks with data is avoided as much as possible. Therefore
 the attacker needs to trick some other, more complicated allocator mechanisms in order to
 gain the full arbitrary read or write primitive.
-\philipp{mention that we do not consider the quarantine as on android it's not used 
-and even on the llvm website they point out performance concerns and it's disabled by default}
+
+We do not consider any attacks on the quarantine, since it is not used in the
+configuration of Scudo used on Android devices. Even on the llvm website, the development
+team behind Scudo, they mention that quarantine may have a quite high impact on
+performance and is therefore disable by default.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \chapter{Scudo Security Measures}
@@ -309,19 +293,31 @@ section.
 \chapter{Breaking the Cookie}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-\philipp{maybe replace some of this text (how the checksum works exactly) 
-with a code listing to show how the checksum is computed, 
-right now it's a bit too long.}
 To check the integrity of chunk headers, Scudo uses a simple checksum with a random 32-bit
 cookie which is used as seed to the hash algorithm. It may use one of two hashing
 algorithms, either CRC32 if hardware support is available for it, or the BSD checksum
-algorithm. Independent of which of the two algorithms is used, it is first applied to the
-cookie and the address, and then again applied to the previous result and the header with
-the checksum bytes in the header set to 0. If CRC32 is used, the result is then xor'd with
-itself shifted right by 16 bits, and truncated to the 16 least significant bits, whereas
-if the BSD checksum is used the cookie is already truncated to the 16 least significant
-bits and all calculations are done over 16 bits. The resulting checksum is therefore in
-either case 16 bits long.
+algorithm. The following pseudo code demonstrates how the checksum is calculated.
+\begin{verbatim}
+// Inputs
+uint32 cookie = randomInt()
+uint64 address
+uint64 header
+
+// Output
+uint16 checksum
+
+// Logic
+If USES_HARDWARE_CRC32:
+  uint32 intermediate = CRC32(cookie, address)
+  intermediate = CRC32(intermediate, header)
+  checksum = (intermediate & (intermediate >> 16)) & 0xffff
+Else:
+  uint16 seed = cookie & 0xffff
+  uint16 intermediate = BSD(seed, address)
+  intermediate = BSD(intermediate, header)
+  checksum = intermediate
+\end{verbatim}
+
 This checksum protects against blind heap overflows, since in a blind heap overflow the
 attacker has no way to forge the correct checksum. Therefore, if the attacker tries to
 modify any values in the header, Scudo will try to verify the checksum of the header
@@ -332,24 +328,18 @@ However, these checksum/hash algorithms are not designed to be cryptographically
 secure. While the cookie is 32 bits long, the checksum is only 16 bits, and it is
 therefore possible to find a cookie collision and produce the same checksums the original
 cookie would have produced. Indeed it is enough to get a single heap leak of a complete
-chunk header together with its address \philipp{in order to recover the cookie 
-and forge valid chunk headers}. 
+chunk header together with its address in order to recover the cookie 
+and forge valid chunk headers.
 Recovering the cookie can be done by simply bruteforcing the
-cookie value until we find the same checksum that we leaked.
-\philipp{cite the previous work that did the z3? cookie recovery}
+cookie value until we find the same checksum that we leaked. Such a bruteforce of the
+cookie was already used by the un1fuzz hobby research group, and another researcher used a
+z3 solver to achieve the same thing.~\cite{un1fuzz}~\cite{z3SolveScudoCookie}
 
-Using a C program bruteforcing the cookie takes around 1–2 seconds, 
-\philipp{nobody forced you to use python (well actually I did but it's not clear in the report :D)}
-\philipp{just say that you implemented a C library to do the bruteforce and also 
-provide python bindings to integrate into pwntools python tooling}
-however due to the poor performance of
-loops in python, the bruteforce does not natively work in python. Therefore we created a
->>>>>>> 5b7aabc (comments)
-small python library written in native C code, which can be used to calculate checksums
-and brute-force a cookie given the header leak data from within python. The python library
-exposes methods to brute-force the cookie and to calculate a new checksum given a cookie
-for both the CRC32 and the BSD algorithms.
-
+Using a C program bruteforcing the cookie takes around 1–2 seconds, therefore we
+implemented a C library that takes care of the checksum calculation and brute-forcing of
+the cookie given the necessary data. To facilitate integration with the pwntools python
+tooling often used for exploit development, we also provide python bindings for this
+library.
 
 %%%%%%%%%%%%%%%%%%
 \chapter{Exploits}
@@ -357,14 +347,14 @@ for both the CRC32 and the BSD algorithms.
 
 \section{Change Class ID}
 
-
-\philipp{have some text here giving a high level explanation of the exploit
-and context, how it relates to the other exploits and breaking of checksum}
+This exploit uses the breaking of the checksum to modify some of the inline header
+metadata, to trick the allocator into processing a chunk differently. It is used in the
+two other exploits, which then take further advantage of the processing of the chunk that
+is different from the intended way.
 
 \subsection{Summary}
-\philipp{I like the summary subsection}
 
-\philipp{Requirements:}
+Requirements:
 \begin{itemize}
 \item Header leak with corresponding address
 \item Free where we control the \emph{0x10} bytes in front of the address
@@ -390,17 +380,19 @@ on how it works.
 
 Once the attacker has the cookie, he needs to find a vulnerable free operation, where he
 can write data to the \emph{0x10} bytes in front of the free'd address. 
-\philipp{I would explicitly mention other ways as well i.e. controlling a pointer that 
-is freed and freeing a faked chunk}
-This can be
-achieved in different ways, but the most likely might be an overflow while writing to a
-chunk of a small size, causing the attacker to be able to write over the header of one of
-the next chunks. \philipp{but the offset inside the memory arena should always be the same though?
-like 0x20 arena, from my own chunk I know at which offsets 0x20, 0x40, 0x60 a chunk may be}
+This can be achieved in different ways, such as an overflow while writing to a chunk of a
+small size, causing the attacker to be able to write over the header of one of the next
+chunks. Another possible way to achieve the primitive can be controlling a pointer that is
+freed, and setting that pointer to a memory region that was set up to look like a fake
+chunk, thus freeing the completely fake chunk.
+
 Though the exact offset from the first chunk which contains the overflow
-and the target header is random due to Scudo's defense mechanisms, the attacker can still
-manage to overwrite it with some spraying and random luck if he can execute the program as
-often as he wants.
+to the target header is random due to Scudo's defense mechanisms, the attacker can still
+manage to overwrite it, since the offset is a multiple of a fixed size that depends on the
+size class that is attacked. The target header might still be allocated before the chunk
+which the attacker can overflow, but with some random luck and if the attacker can execute
+the program as often as he wants, at some point the target header should be allocated at
+one of these multiples after the overflow.
 
 The attacker then forges a new valid header with its corresponding checksum thanks to
 the brute-forced cookie. 
@@ -412,127 +404,23 @@ When the chunk with the forged header gets free'd, it will be put into the cache
 larger class ID, and when a chunk from that same class ID gets allocated again, Scudo will
 allocate a larger sized chunk in the small chunk region.
 
+\begin{figure}[h!]
+  \centering
+  \includegraphics[width=\linewidth]{figures/ChangeClassID.png}
+  \caption{Illustration of the modification to chunk header}\label{fig:ChangeClassID}
+\end{figure}
+
 \philipp{some diagram/graphic etc to show how the exploit works, what happens 
 when it succeeds etc would be very helpful for the reader}
 
-\section{Safe Unlink Secondary}
-
-\philipp{I would switch the order of safe unlink and commitbase, 
-commitbase is easier to explain I think}
-
-\philipp{some context, this exploit builds on change class id to get arb. write.
-builds a fake linked list and coaxes scudo to put a chunk pointing to a free list 
-into itself.
-}
-
-\subsection{Summary}
-
-\philipp{Requirements}
-\begin{itemize}
-\item Header leak with corresponding address
-\item Scudo library base leak
-\item Three consecutive frees on the same address
-\item Control over the \emph{0x10} bytes in front of the address before the first two
-  frees
-\item Control over the \emph{0x40} bytes in front of the address before the third free
-\end{itemize}
-
-Result: Next allocation will be a chunk in the PerClass structure itself (thread-local
-free list), allowing control of future allocations
-
-
-\subsection{Requirements}
-
-The safe unlink exploit has a certain number of requirements that the target binary needs
-to fulfill.
-
-First we need a header leak of any chunk from the heap as well as its address, in
-order to brute-force the cookie. Afterward we can forge any header checksum from the
-cookie we calculated from this leak.
-
-Second we need a free for which we can control a certain number of bytes before the free,
-more specifically we need to control \emph{0x40} bytes in front of the address of the
-free. This is the size of the secondary header plus the size of the padded primary header.
-
-\philipp{keep it simple here, just say that the attacker wants to forge a faked linked 
-list, for which the attacker requires the scudo library leak and the two frees}
-Third we need two interesting places in memory (at addresses `add1` and `add2`
-respectively) that have the address of the free address from the previous step stored. We
-will store \emph{add2} at \emph{add1+0x8} and \emph{add1} at \emph{add2}. Therefore, `add1`
-and `add2` should be in some interesting location allowing elevation of our access.  The
-easiest way to get this is by having two more frees of the chunk in the previous step and
-being able to control the \emph{0x10} bytes in front of the address to modify the
-header. With this method we however also need a leak of the Scudo library base, in order to
-get the location of the thread-local free list (PerClass list).
-
-\subsection{Explanation}
-
-\begin{figure}[h!]
-  \centering
-  \includegraphics[width=\linewidth]{figures/SafeUnlinkMemory.png}
-  \caption{Illustration of different important memory regions
-  \philipp{is perclass above or below scudo base in memory?, also 
-  I think it's good but you should visualize the faked linked list more clearly, 
-  along with the frees that we do, probably another figure}}
-  \label{fig:SafeUnlinkMemory}
-\end{figure}
-
-As with most Scudo exploits, the first step is to get the cookie, which can be done from
-any single header leak, as explained in the dedicated section.
-
-\philipp{need to talk about the fact that when changing a chunk to class id 0, 
-scudo will look and parse the secondary chunk header metadata (pointers!!). 
-For this exploit we target the linked list pointers. 
-I know 
-this part comes later in the exploit but I think it makes it clearer to first explain 
-the main idea and then the specifics.}
-
-Then we need to have two locations in memory that point to the chunk we will tamper with
-in the next section. The way we achieve this is by having two frees on that same chunk,
-leaving its address twice in the PerClass structure next to each other. The PerClass
-structure constitutes the first level, thread specific free list of chunks. It is handled
-as a simple array of chunk addresses, and therefore freeing the same chunk twice leaves
-two pointers to that chunk right next to each other in the PerClass structure. 
-\philipp{between frees we need to modify header to change status of chunk, to 
-not trigger double free detection, also note that scudo fully trusts the header 
-and thus doesn't notize the double free.}
-
-\philipp{next sentence is a bit confusing, we only have one setup}This setup
-is especially interesting since getting the allocation of a chunk in the PerClass
-structure could allow us to control all following allocations and to allocate chunks at
-arbitrary addresses. The only obstacle is that we need to modify the chunk header before
-the second free to mark the chunk as allocated again.
-
-Once we have set up the two addresses in the PerClass array, we need to know its address
-still. To calculate the address of the PerClass array(s) we need to have a leak of some
-Scudo address, like the base address where Scudo is loaded or the address of the malloc
-function. We can calculate the offset needed from there based on the Scudo version, and
-then advance by \emph{0x100} times the value of the class ID where we free'd the
-chunks. Then we just need to guess the number of chunks present in the PerClass structure
-of that class ID.
-
-Finally, we need to prepare the header of the final free that will trigger the safe
-unlink. For that we need to configure a fake secondary header in front of the primary
-header, as well as modifying the latter to set its class ID to 0. We set the prev
-(\emph{chunk\_addr - 0x40}) to the first of our locations \emph{-0x8} and the next
-(\emph{chunk\_addr - 0x38}) to the second of our locations. With the PerClass setup, we
-can set both of them to the address where the first of the two addresses is stored.  Next
-follow the CommitBase, CommitSize and MapBase, MapSize. We can set them to the values we
-want, we can set them to whatever since we don't actually use them. They have a size of
-\emph{0x8} bytes each.  Finally, we just need to set the primary header with the class ID
-set to 0 and the checksum recalculated.
-
-When the free of that chunk then happens, it is handed to the secondary allocator since we
-set the class ID to 0. The secondary allocator tries to remove the chunk from the linked
-list of in use chunks, even when our fake chunk never was in it. So it tries to set the
-Next$\rightarrow$Prev pointer to Prev and the Prev$\rightarrow$Next pointer to Next, which leads it to write the
-addresses of \philipp{what's our location, should be more specific}our locations in the PerClass structure to those same addresses, which will
-allow us to allocate a chunk in the PerClass structure itself.
-
 \section{Exploit CommitBase}
 
-\philipp{overview of exploit, modify metadata of fake secondary chunk 
-to directly allocate a fake secondary chunk at a pointer of the attacker's choice}
+In this exploit, the attacker modifies the unprotected metadata of a fake secondary chunk,
+to put an address of the attacker's choosing into the cache for secondary chunks. This
+injected address is then used to directly allocate a new secondary chunk at the address
+chosen by the attacker. The exploit relies on the Change Class ID exploit to get a fake
+secondary chunk, since real secondary chunks are protected against overflows with guard
+pages.
 
 \subsection{Summary}
 
@@ -564,7 +452,6 @@ size. This is the allocation where we will get our arbitrary access.
 
 \subsection{Explanation}
 
-
 \philipp{figure as well}
 The breaking of the cookie works exactly the same as explained previously, and the first
 part of this exploit also reuses a previously introduced exploit. Indeed, the first part is
@@ -595,17 +482,124 @@ free of the fake secondary chunk would cause a negative overflow, and on the nex
 allocation the program would crash, so before we could get our arbitrary chunk.
 
 
+\section{Safe Unlink Secondary}
+
+This exploit uses a trick similar to the libc safe unlink exploit, that tricks the linked
+list deletion function into inserting a pointer to Scudo's free list into the free list
+itself. The attacker achieves this by building a fake linked list, and is rewarded with
+the ability to write into the internal Scudo structures, which can be escalated into an
+arbitrary write.
+
+\subsection{Summary}
+
+Requirements:
+\begin{itemize}
+\item Header leak with corresponding address
+\item Scudo library base leak
+\item Three consecutive frees on the same address
+\item Control over the \emph{0x10} bytes in front of the address before the first two
+  frees
+\item Control over the \emph{0x40} bytes in front of the address before the third free
+\end{itemize}
+
+Result: Next allocation will be a chunk in the PerClass structure itself (thread-local
+free list), allowing control of future allocations
+
+
+\subsection{Requirements}
+
+The safe unlink exploit has a certain number of requirements that the target binary needs
+to fulfill.
+
+First we need a header leak of any chunk from the heap as well as its address, in
+order to brute-force the cookie. Afterward we can forge any header checksum from the
+cookie we calculated from this leak.
+
+Second we need a free for which we can control a certain number of bytes before the free,
+more specifically we need to control \emph{0x40} bytes in front of the address of the
+free. This is the size of the secondary header plus the size of the padded primary header.
+
+Third we want to forge a fake linked list, for which we need a leak of the Scudo library
+base, and two more frees of the chunk in the previous step and
+being able to control the \emph{0x10} bytes in front of the address to modify the
+header.
+
+\subsection{Explanation}
+
+\begin{figure}[h!]
+  \centering
+  \includegraphics[width=\linewidth]{figures/SafeUnlinkMemoryFrees.png}
+  \caption{Illustration of forged linked list and the frees we
+    need}\label{fig:SafeUnlinkMemoryFrees}
+\end{figure}
+
+As with most Scudo exploits, the first step is to get the cookie, which can be done from
+any single header leak, as explained in the dedicated section. This willl be used later,
+to craft a fake secondary chunk by changing the class ID saved in the header to 0. This
+causes Scudo to look at the forged secondary chunk header and to parse some of the data
+contained in it, like the pointers to the previous and next in use secondary chunks. In
+this exploit we target the linked list pointers and the logic to remove an element from
+the linked list. An overview of what our forged linked list should look like can be seen
+in \autoref{fig:SafeUnlinkMemoryFrees}. In that figure are also shown the locations of the
+three different frees that are needed and that are explained in more detail below.
+
+Then we need to have two locations in memory that point to the chunk we will tamper with
+in the next section. The way we achieve this is by having two frees on that same chunk,
+leaving its address twice in the PerClass structure next to each other. The PerClass
+structure constitutes the first level, thread specific free list of chunks. It is handled
+as a simple array of chunk addresses, and therefore freeing the same chunk twice leaves
+two pointers to that chunk right next to each other in the PerClass structure. In order to
+not trigger double free detection, we just need to modify the header of the chunk between
+the two frees to set its status to Allocated again. Since Scudo completely trusts the
+header and doesn't try to detect a double free in any other way, this is sufficient to get
+the double free without Scudo throwing any error.
+
+\begin{figure}[h!]
+  \centering
+  \includegraphics[width=\linewidth]{figures/SafeUnlinkMemory.png}
+  \caption{Illustration of different important memory regions}\label{fig:SafeUnlinkMemory}
+\end{figure}
+
+Once we have set up the two addresses in the PerClass array, we need to know its address
+still. To calculate the address of the PerClass array(s) we need to have a leak of some
+Scudo address, like the base address where Scudo is loaded or the address of the malloc
+function. We can calculate the offset needed from there based on the Scudo version, and
+then advance by \emph{0x100} times the value of the class ID where we free'd the
+chunks. Then we just need to guess the number of chunks present in the PerClass structure
+of that class ID. We will refer to the addresses that we calculate in this step as the
+\emph{perclass\_addr1} and \emph{perclass\_addr2} from here on forward for simplicity. These
+two addresses both point to a location in the PerClass array, at which our two addresses
+of our chunks are located.
+
+Finally, we need to prepare the header of the final free that will trigger the safe
+unlink. For that we need to configure a fake secondary header in front of the primary
+header, as well as modifying the latter to set its class ID to 0. We set the prev
+(\emph{chunk\_addr - 0x40}) to \emph{perclass\_addr2 - 0x8} and the next
+(\emph{chunk\_addr - 0x38}) to \emph{perclass\_addr1}. With the PerClass setup, we
+can set both of them to the address where the first of the two addresses is stored.  Next
+follow the CommitBase, CommitSize and MapBase, MapSize. We can set them to the values we
+want, we can set them to whatever since we don't actually use them. They have a size of
+\emph{0x8} bytes each.  Finally, we just need to set the primary header with the class ID
+set to 0 and the checksum recalculated.
+
+When the free of that chunk then happens, it is handed to the secondary allocator since we
+set the class ID to 0. The secondary allocator tries to remove the chunk from the linked
+list of in use chunks, even when our fake chunk never was in it. So it tries to set the
+Next$\rightarrow$Prev pointer to Prev and the Prev$\rightarrow$Next pointer to Next, which
+leads it to write the addresses of our locations in the PerClass structure
+(\emph{perclass\_addr1} and \emph{perclass\_addr2}) to those same addresses, which will
+allow us to allocate a chunk in the PerClass structure itself.
+
 %%%%%%%%%%%%%%%%%%%%
 \chapter{Mitigation}
 %%%%%%%%%%%%%%%%%%%%
 
 Both our exploits depend on the same mechanism of how secondary chunks are handled, by setting
 the ClassId of a chunk to 0 before freeing it and therefore tricking Scudo into handling a
-small chunk as if it was a big chunk. \philipp{parsing attacker controlled 
-metdata before the chunk}
-Therefore, in our mitigation we implement an
-additional system to verify before freeing a large chunk that it was actually allocated as
-a large chunk.
+small chunk as if it was a big chunk. In the process of freeing the fake big chunk, Scudo
+then parses metadata before the chunk header that is controlled by the attacker.
+Therefore, in our mitigation we implement an additional system to verify before freeing a
+large chunk that it was actually allocated as a large chunk.
 
 To be able to do this verification, we allocate a new special memory region, which can by
 default hold 1001 addresses. Whenever a new big chunk is allocated, its address is stored
@@ -620,8 +614,7 @@ searched for its address. If it is found, the space in the special memory region
 0 to indicate it is free again, and the rest of the logic to free the big chunk continues
 normally. If however the address is not found in the special memory region, the free is
 ignored as it is assumed to be either a corrupt chunk or an attacker trying to trick Scudo
-into freeing a fake forged chunk. \philipp{we ignore the free or we abort? we should probably 
-abort}
+into freeing a fake forged chunk.
 
 Two options were added in the Allocator Config to configure the details of the mitigation
 and to completely disable the mitigation if it is deemed too expensive in some
@@ -631,16 +624,12 @@ configurations.
 
 \subsection{Effectiveness}
 
-\philipp{I think both our exploits should have aborted, anyways I would explicitly 
-say why both our exploits don't work. Expand on the last few sentences of this paragraph and 
-remove the running script ones.} 
 After implementing the mitigation, we first checked to see if our exploits were indeed
-fixed by our mitigation. Indeed, our exploit scripts still ran without error, however when
-displaying what was supposed to be our chosen address for our chunk allocation, with both
-our exploits the returned address didn't match our chosen address anymore. Since our fake
-chunks we are trying to free to trick the allocator mechanisms were in both cases
-originally small chunks, the mechanisms are never even triggered since our mitigation
-detects that the fake chunks are not supposed to be large chunks.
+fixed by our mitigation. Since our fake chunks we are trying to free to trick the
+allocator mechanisms were in both cases originally small chunks, the mechanisms are never
+even triggered since our mitigation detects that the fake chunks are not supposed to be
+large chunks. Therefore Scudo does abort the processing of the chunk before it gets to
+parsing the attacker controlled metadata.
 
 \subsection{Performance}
 
@@ -674,12 +663,74 @@ version.
 While in the worst case (many secondary allocations with many secondary chunks being
 allocated at the same time) the performance impact is quite high, in usual usage it should
 not matter much. This seems to also be confirmed by the benchmark tests of mimalloc-bench
-we ran, results of which are shown in \autoref{tab:MimallocBench}.
-\philipp{maybe we pick the first 10 results of the benchmark and have the full table 
-in the appendix. Right now it's a bit too big.}
+we ran, some of which are shown in \autoref{tab:MimallocBench}. For the full results check
+\autoref{tab:FullMimallocBench} in the Appendix.
 
 \begin{longtable}[h]{l l r r r r r r}
-  \caption{mimalloc-bench results}\label{tab:MimallocBench} \\
+  \caption{Excerpt of mimalloc-bench results}\label{tab:MimallocBench} \\
+
+  \toprule
+  test & alloc & time & rss & user & sys & page-faults & -reclaims \\
+  \midrule
+  \endhead{}
+  cfrac & sys & 8.49 & 3171 & 8.49 & 0.0 & 0 & 434 \\
+  \midrule
+  cfrac & scudo\_fixed & 10.03 & 4645 & 10.03 & 0.0 & 0 & 612 \\
+  \midrule
+  cfrac & scudo & 9.96 & 4672 & 9.96 & 0.0 & 0 & 611 \\
+  \midrule
+  espresso & sys & 6.36 & 2540 & 6.35 & 0.01 & 1 & 473 \\
+  \midrule
+  espresso & scudo\_fixed & 7.05 & 4852 & 7.03 & 0.01 & 0 & 659 \\
+  \midrule
+  espresso & scudo & 7.02 & 4860 & 7.0 & 0.02 & 0 & 654 \\
+  \midrule
+  barnes & sys & 3.57 & 58405 & 3.54 & 0.03 & 0 & 16570 \\
+  \midrule
+  barnes & scudo\_fixed & 3.42 & 59704 & 3.39 & 0.03 & 0 & 16645 \\
+  \midrule
+  barnes & scudo & 3.77 & 59739 & 3.75 & 0.02 & 0 & 16645 \\
+  \bottomrule
+\end{longtable}
+
+
+%%%%%%%%%%%%%%%%%%%%
+\chapter{Conclusion}
+%%%%%%%%%%%%%%%%%%%%
+
+In this project, we used our previous work and acquired knowledge on the Scudo allocator
+and the gef plugin we built for it, to try to find some exploits that work on the Scudo
+allocator, similar to the glibc exploitation houses. The source code of the different
+exploitation scripts, the used exploitable programs, as well as some utilities to
+facilitate exploit development are available at
+\url{https://github.com/SIELA1915/house-of-scudo}.
+
+We developed a python library, that takes advantage of the speed of native C code to take
+on the task of brute-forcing the cookie, given one header leak. Then we found and
+implemented two exploits, which are based on the common technique of forging headers using
+the brute-forced cookie.
+The Safe Unlink Secondary exploit was coincidentally fixed by a change on March 6th 2023,
+with commit $a6e3bb9$. Since the CommitBase exploit however was not fixed, we implemented
+a possible mitigation, that would fix both of our exploits. We then evaluated our
+mitigation, by checking it indeed fixes both of our exploits and by benchmarking the
+performance impact of our mitigation. Since the performance impact was negligible in most
+common scenarios, we submitted the mitigation to the official llvm repository in the form
+of a pull request on December 13th 2023.
+
+
+\cleardoublepage{}
+\phantomsection{}
+\addcontentsline{toc}{chapter}{Bibliography}
+\printbibliography{}
+
+% Appendices are optional
+\appendix
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\chapter{Full mimalloc-bench results}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{longtable}[h]{l l r r r r r r}
+  \caption{Full mimalloc-bench results}\label{tab:FullMimallocBench} \\
 
   \toprule
   test & alloc & time & rss & user & sys & page-faults & -reclaims \\
@@ -789,34 +840,5 @@ in the appendix. Right now it's a bit too big.}
   \bottomrule
 \end{longtable}
 
-
-%%%%%%%%%%%%%%%%%%%%
-\chapter{Conclusion}
-%%%%%%%%%%%%%%%%%%%%
-
-In this project, we used our previous work and acquired knowledge on the Scudo allocator
-and the gef plugin we built for it, to try to find some exploits that work on the Scudo
-allocator, similar to the glibc exploitation houses. The source code of the different
-exploitation scripts, the used exploitable programs, as well as some utilities to
-facilitate exploit development are available at
-\url{https://github.com/SIELA1915/house-of-scudo}.
-
-We developed a python library, that takes advantage of the speed of native C code to take
-on the task of brute-forcing the cookie, given one header leak. Then we found and
-implemented two exploits, which are based on the common technique of forging headers using
-the brute-forced cookie.
-The Safe Unlink Secondary exploit was coincidentally fixed by a change on March 6th 2023,
-with commit $a6e3bb9$. Since the CommitBase exploit however was not fixed, we implemented
-a possible mitigation, that would fix both of our exploits. We then evaluated our
-mitigation, by checking it indeed fixes both of our exploits and by benchmarking the
-performance impact of our mitigation. Since the performance impact was negligible in most
-common scenarios, we submitted the mitigation to the official llvm repository in the form
-of a pull request on December 13th 2023.
-
-
-\cleardoublepage{}
-\phantomsection{}
-\addcontentsline{toc}{chapter}{Bibliography}
-\printbibliography{}
 
 \end{document}
