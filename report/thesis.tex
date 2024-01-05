@@ -44,6 +44,7 @@
 }
 
 \newreviewer{philipp}{philipp}
+\newreviewer{elias}{elias}
 
 \title{House of Scudo}
 \author{Elias Valentin Boschung}
@@ -79,24 +80,37 @@
   available at \url{https://github.com/hexhive/thesis_template}.}  \makeacks{}
 
 \begin{abstract}
-  Heap exploits are a very frequent issue in C programming, due to the quite high
-  complexity of memory management for programmers. Attackers can use such heap exploits
+  Heap exploits\philipp{no bugs are} are a very frequent issue in C programming, due to the quite high
+  complexity of memory management for programmers. Attackers can exploit such heap exploits \philipp{bugs}
   like overflows, double free's and similar to abuse the underlying mechanics of the heap
+\elias{
   allocator and get even bigger control over heap memory such as arbitrary writes. However,
   Scudo is an allocator used on Android 11+ that is supposed to be specifically hardened
   to prevent or at least complicate such attacks.~\cite{llvmScudo}
+}
+  allocator and achieve arbitrary memory write. 
+  \philipp{mention libc allocator exploitation houses/techniques}
+  
+  Scudo is an allocator used on Android 11+ that is supposed to be specifically hardened
+  to prevent or at least complicate such attacks.
+  \philipp{to this day the resilience of this allocator to a dedicated attacker 
+  remains untested.}
 
+  \philipp{instead of saying this was the plan and then repeat that this was 
+  achieved, just say what you achieved on a high level.}
   In this project we tried to look for exploits using these heap vulnerabilities and
   targeting the mechanics of Scudo specifically. The goal was to find ways to trick the
   Scudo allocator despite its defenses and get techniques similar to the exploitation
   houses for the more common libc allocator.
-
   We indeed discovered two exploits that by exploiting different heap vulnerabilities and
   mechanics of the Scudo allocator trick it into returning a chunk at an address chosen by
   the attacker, thus essentially achieving an arbitrary write primitive.
 
+  \philipp{In addition to the attacks, we propose ...}
   Additionally to the two exploits, we propose a mitigation that targets a mechanic of the
-  Scudo allocator that is exploited in both of our exploits. We also show that the impact
+  Scudo allocator that is exploited in both of our exploits\philipp{a mitigation that prevents 
+  prevents either of the discovered exploits(and also further hardens scudo)}. 
+  We show that the impact
   of our mitigation on the allocator's performance should be negligible in most common
   scenarios.
 \end{abstract}
@@ -107,16 +121,29 @@
 \chapter{Introduction}
 %%%%%%%%%%%%%%%%%%%%%%
 
+\elias{
 Heap vulnerabilities are a frequent and dangerous attack surface, as they allow attackers
 to exploit the underlying functions of the heap allocator itself, that works the same way
 independent of the application's data. This can also be seen by the fact that there exist
+}
+Heap vulnerabilities are a frequent and dangerous attack surface, 
+\philipp{cite microsoft report}
+\philipp{expand a bit that such memory corruptions can lead to RCE}
+as they allow attackers
+\philipp{to get code execution.}
+\philipp{Attackers often leverage }
+the underlying mechanisms of the heap allocator itself.
+\philipp{For the widely used glibc allocator there exist generic ...}
+>>>>>>> 5b7aabc (comments)
 generic techniques that, given some preconditions, give a pattern to escalate a heap
-vulnerability and to get for example remote code execution. There exist a lot of these
-techniques for the widely used glibc allocator, like the libc:free\_hook, unsafe unlink or
+vulnerability and to get remote code execution. 
+\philipp{free hook isn't really an exploitation technique, remove that}
+like the libc:free\_hook, unsafe unlink or
 the list of libc heap exploitation houses. Such heap vulnerabilities are also relevant in
 the Android environment, as can be seen by the example of a remote code execution found in
 WhatsApp back in 2019, which was caused by a double free.~\cite{whatsappRCE}
 
+\elias{
 However, Android devices don't use the popular glibc allocator, but since Android 11 use a
 new heap allocator called Scudo. Scudo was developed specifically with security in mind,
 to reduce the possibilities of an attacker to leverage the allocators mechanisms to get an
@@ -125,6 +152,20 @@ metadata, and it also tries to isolate some of the metadata, specifically all th
 related metadata, to its own region, to reduce the risk of possible corruption with a
 simple overflow. Also since it is designed completely differently, the known techniques
 for the glibc allocator don't work in the same way for Scudo.~\cite{llvmScudo}
+}
+\philipp{Change the first sentence to improve the transition. Right 
+now it reads like Android is just not affected by this problem, for ex: to harden android applications 
+against such attacks ...}
+However Android devices don't use the popular glibc allocator, but since Android 11 use a
+new heap allocator called Scudo. Scudo was developed specifically with security in mind,
+to reduce the possibilities of an attacker to leverage the allocators mechanisms to get an
+arbitrary write primitive. Scudo uses a checksum to secure critical
+metadata stored in-line and it also tries to isolate some of the metadata, specifically all the free list
+related metadata, to its own region, to reduce the risk of possible corruption with a
+simple overflow. Ssince it is designed completely differently, the known techniques
+for the glibc allocator are not applicable to Scudo.
+\philipp{currently there doesn't exist a study on such attack.}
+>>>>>>> 5b7aabc (comments)
 
 Therefore, in this project we try to find techniques to exploit mechanisms from the heap
 allocator itself, similar to the way such techniques exist for the glibc heap
@@ -140,7 +181,7 @@ Finally, we detect that the two attacks we found both rely on a common mechanism
 Scudo handles larger chunks compared to smaller ones. In order to protect against these
 attacks, we propose a mitigation that adds some additional checks to address that specific
 exploitation of the mechanism, and thus prevents these attacks. We evaluate our mitigation
-and find that in normal use, the overhead should be low enough to be acceptable. We
+and find that \philipp{the overhead on benchmarks is negligible} in normal use, the overhead should be low enough to be acceptable. We
 therefore open a pull request to llvm, the official development team behind the Scudo
 allocator.
 
@@ -148,17 +189,21 @@ allocator.
 \chapter{Threat model}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+\philipp{not sure this paragraph is necessary}
 In order to search for exploits in Scudo, we first define a threat model, that defines
-what capabilities our imaginary attacker may have. Thanks to this threat model we will
+what capabilities our attacker has. Thanks to this threat model we will
 know how far we need to search and in what direction our exploits should be oriented.
 
-In our threat model, our attacker may have access to some basic heap vulnerabilities, such
-as overflows, double free's and arbitrary free's. These vulnerabilities can give the
+\philipp{don't use may just say attacker has access to..}
+In our threat model, the attacker has access to some basic heap vulnerabilities, such
+as overflows, double free's and arbitrary free's. 
+\philipp{our attacker also has an ASLR leak}
+These vulnerabilities can give the
 attacker some control over a restrained space of heap memory. The goal of the attacker
-however is to get an arbitrary read or write primitive, allowing them to control the whole
-heap memory. We don't consider any vulnerabilities in application specific data, so the
-attacker from our threat model should only exploit some allocator mechanisms and not rely
-on any application data.
+however is to get an arbitrary write primitive, them to get full control of the 
+program. We don't consider any vulnerabilities in application specific data, so the
+attacker from our threat model should only exploit the allocator's mechanisms and not rely
+on any application data. \philipp{such as data/code pointers stored on the heap}
 
 When using the glibc allocator, or some other unhardened allocators, these basic heap
 vulnerabilities can directly lead to an arbitrary write primitive, by using pointers
@@ -168,8 +213,14 @@ stored inside the free chunks themselves. Since these free chunks may be control
 use after free or an overflow for example, the cache can be corrupted and an arbitrary
 address inserted. An example of such a corruption can be found on~\cite{tcachePoisoning}.
 
-However, Scudo is built with such security issues in mind, therefore the use of pointers in
+\elias{However, Scudo is built with such security issues in mind, therefore the use of pointers in
 the same memory regions as the chunks with data is avoided as much as possible. Therefore,
+}
+\philipp{I think you can move this to the next chapter (a new first section), 
+where you point out what's special about scudo}
+However Scudo is built with such security issues in mind, therefore the use of pointers in
+the same memory regions as the chunks with data is avoided as much as possible. Therefore
+>>>>>>> 5b7aabc (comments)
 the attacker needs to trick some other, more complicated allocator mechanisms in order to
 gain the full arbitrary read or write primitive.
 
@@ -178,8 +229,26 @@ gain the full arbitrary read or write primitive.
 \chapter{Scudo Security Measures}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+\philipp{right now this section isn't very focused on security measures}
+
+\philipp{you should explicitly introduce scudos two main security mechanism and 
+then have one section for each (after the basics section)}
+
+\philipp{one section about protected inline metadata: only very little inline 
+metadata. free list in segregated region/bss of scudo, 
+headers protected with checksum, secondary chunk header metadata, 
+stored in front of mmapped regions}
+
+\philipp{another section about segregated memory regions and random allocations 
+inside those regions (shorter than previous one, since we don't care too 
+much about this for our exploits)}
+
+\philipp{we will introduce all the other mechanisms when they become relevant 
+in the exploits/mitigations (such as the free list for the chunks)}
+
 \section{Basics}
 
+\philipp{don't talk about performance here, rest is fine}
 The Scudo hardened allocator divides the heap allocations it is asked to do into two big
 types of allocations, based on the size of the chunk to be allocated.  The smaller chunks
 are handled by the primary allocator inside Scudo, which is designed to optimize
@@ -266,6 +335,9 @@ section.
 \chapter{Breaking the Cookie}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+\philipp{maybe replace some of this text (how the checksum works exactly) 
+with a code listing to show how the checksum is computed, 
+right now it's a bit too long.}
 To check the integrity of chunk headers, Scudo uses a simple checksum with a random 32-bit
 cookie which is used as seed to the hash algorithm. It may use one of two hashing
 algorithms, either CRC32 if hardware support is available for it, or the BSD checksum
@@ -283,14 +355,31 @@ before taking any action with the chunk, and will crash the program since the ch
 will not match the data in the header.
 
 However, these checksum/hash algorithms are not designed to be cryptographically
-secure. Also while the cookie is 32 bits long, the checksum is only 16 bits, and it is
+secure. While the cookie is 32 bits long, the checksum is only 16 bits, and it is
 therefore possible to find a cookie collision and produce the same checksums the original
+\elias{
 cookie would have produced. Indeed, it is enough to get a single heap leak of a complete
 chunk header together with its address. To accomplish that we can simply brute-force the
+}
+cookie would have produced. Indeed it is enough to get a single heap leak of a complete
+chunk header together with its address \philipp{in order to recover the cookie 
+and forge valid chunk headers}. 
+Recovering the cookie can be done by simply bruteforcing the
+>>>>>>> 5b7aabc (comments)
 cookie value until we find the same checksum that we leaked.
+\philipp{cite the previous work that did the z3? cookie recovery}
 
+\elias{
 Using a C program this takes around 1–2 seconds, however due to the poor performance of
 loops in python, the brute-force does not natively work in python. Therefore, we created a
+}
+Using a C program bruteforcing the cookie takes around 1–2 seconds, 
+\philipp{nobody forced you to use python (well actually I did but it's not clear in the report :D)}
+\philipp{just say that you implemented a C library to do the bruteforce and also 
+provide python bindings to integrate into pwntools python tooling}
+however due to the poor performance of
+loops in python, the bruteforce does not natively work in python. Therefore we created a
+>>>>>>> 5b7aabc (comments)
 small python library written in native C code, which can be used to calculate checksums
 and brute-force a cookie given the header leak data from within python. The python library
 exposes methods to brute-force the cookie and to calculate a new checksum given a cookie
@@ -303,8 +392,13 @@ for both the CRC32 and the BSD algorithms.
 
 \section{Change Class ID}
 
-\subsection{Summary}
 
+\philipp{have some text here giving a high level explanation of the exploit}
+
+\subsection{Summary}
+\philipp{I like the summary subsection}
+
+\philipp{Requirements:}
 \begin{itemize}
 \item Header leak with corresponding address
 \item Free where we control the \emph{0x10} bytes in front of the address
@@ -346,6 +440,9 @@ ID instead of the original one.
 When the chunk with the forged header gets free'd, it will be put into the cache of the
 larger class ID, and when a chunk from that same class ID gets allocated again, Scudo will
 allocate a larger sized chunk in the small chunk region.
+
+\philipp{some diagram/graphic etc to show how the exploit works, what happens 
+when it succeeds etc would be very helpful for the reader}
 
 \section{Safe Unlink Secondary}
 
